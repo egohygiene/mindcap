@@ -15,8 +15,8 @@ class SunoWorkspaceCaptureService:
         client: SunoClient | None = None,
         downloader: SunoAssetDownloader | None = None,
     ) -> None:
-        self._client = client or SunoClient()
-        self._downloader = downloader or SunoAssetDownloader(self._client)
+        self._client = client
+        self._downloader = downloader
 
     def _asset_candidates(self, clip: dict[str, Any], options: dict[str, Any]) -> list[tuple[str, str, str, str]]:
         metadata = clip.get("metadata") if isinstance(clip.get("metadata"), dict) else {}
@@ -56,10 +56,12 @@ class SunoWorkspaceCaptureService:
         return candidates
 
     def capture(self, request: CaptureRequest) -> CaptureEnvelope:
+        client = self._client or SunoClient()
+        downloader = self._downloader or SunoAssetDownloader(client)
         warnings: list[str] = []
         response_units = []
         assets: list[CapturedAsset] = []
-        workspace, workspace_record = self._client.get_workspace(request.canonical_identifier)
+        workspace, workspace_record = client.get_workspace(request.canonical_identifier)
         response_units.append(workspace_record.to_raw_response_unit("workspace-000", 0))
 
         clips_by_id: dict[str, dict[str, Any]] = {}
@@ -68,7 +70,7 @@ class SunoWorkspaceCaptureService:
                 clips_by_id[str(clip["id"])] = dict(clip)
 
         for index, (page, record) in enumerate(
-            self._client.list_workspace_clips(request.canonical_identifier), start=1
+            client.list_workspace_clips(request.canonical_identifier), start=1
         ):
             response_units.append(
                 record.to_raw_response_unit(f"clips-page-{index:03d}", len(response_units))
@@ -78,20 +80,20 @@ class SunoWorkspaceCaptureService:
                     clips_by_id[str(clip["id"])] = {**clips_by_id.get(str(clip["id"]), {}), **clip}
 
         for clip_id, clip in sorted(clips_by_id.items()):
-            detail = self._client.get_clip_detail(clip_id)
+            detail = client.get_clip_detail(clip_id)
             if detail is not None:
                 payload, record = detail
                 clip.update(payload)
                 response_units.append(
                     record.to_raw_response_unit(f"clip-{clip_id}", len(response_units))
                 )
-            lyrics = self._client.get_lyrics(clip_id)
+            lyrics = client.get_lyrics(clip_id)
             if lyrics is not None:
                 _, record = lyrics
                 response_units.append(
                     record.to_raw_response_unit(f"lyrics-{clip_id}", len(response_units))
                 )
-            aligned = self._client.get_aligned_lyrics(clip_id)
+            aligned = client.get_aligned_lyrics(clip_id)
             if aligned is not None:
                 _, record = aligned
                 response_units.append(
@@ -101,7 +103,7 @@ class SunoWorkspaceCaptureService:
                 clip, request.options
             ):
                 try:
-                    local_path, metadata = self._downloader.download(url)
+                    local_path, metadata = downloader.download(url)
                     assets.append(
                         CapturedAsset(
                             asset_id=f"{clip_id}-{asset_type}",
@@ -135,7 +137,7 @@ class SunoWorkspaceCaptureService:
             safe_metadata={
                 "input_kind": "api",
                 "clip_count": len(clips_by_id),
-                "api_origin": self._client.api_origin,
+                "api_origin": client.api_origin,
             },
             warnings=warnings,
         )

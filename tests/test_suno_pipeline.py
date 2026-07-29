@@ -148,4 +148,7 @@ def test_capture_defaults_to_plugin_strategy_for_suno(tmp_path: Path) -> None:
         )
 
     assert result.exit_code == 0
-    assert str(tmp_path / "workspaces" / "suno" / f"suno-{WORKSPACE_ID}" / "v1") in result.stdout
+    assert (
+        str(tmp_path / "workspaces" / "suno" / f"suno-{WORKSPACE_ID}" / "v1")
+        in result.stdout.replace("\n", "")
+    )

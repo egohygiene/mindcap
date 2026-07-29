@@ -8,7 +8,8 @@ class SunoApiCaptureStrategy:
     name = "api"
 
     def __init__(self, service: SunoWorkspaceCaptureService | None = None) -> None:
-        self._service = service or SunoWorkspaceCaptureService()
+        self._service = service
 
     def capture(self, request: CaptureRequest) -> CaptureEnvelope:
-        return self._service.capture(request)
+        service = self._service or SunoWorkspaceCaptureService()
+        return service.capture(request)
