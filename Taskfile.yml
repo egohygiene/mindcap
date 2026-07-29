@@ -155,3 +155,64 @@ tasks:
       - find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
       - find . -type f -name "*.pyc" -delete 2>/dev/null || true
     silent: false
+
+  # ── Suno-specific tasks ─────────────────────────────────────────────────────
+
+  suno:doctor:
+    desc: Run safe Suno authentication and API diagnostics.
+    cmds:
+      - uv run mindcap doctor suno
+    silent: false
+
+  suno:auth:
+    desc: >-
+      Store Suno authentication credentials.
+      Pipe your Clerk __client cookie or full Cookie header over stdin.
+      Example: echo "<cookie-value>" | task suno:auth
+    cmds:
+      - uv run mindcap auth suno --cookie-stdin
+    silent: false
+
+  suno:capture:
+    desc: >-
+      Capture a Suno workspace via the API strategy.
+      Usage: task suno:capture -- "<workspace-url-or-id>"
+      Examples:
+        task suno:capture -- "https://suno.com/create?wid=04374a8f-a159-..."
+        task suno:capture -- "04374a8f-a159-..."
+    cmds:
+      - |
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          echo "Usage: task suno:capture -- \"<workspace-url-or-id>\""
+          echo "Example: task suno:capture -- \"https://suno.com/create?wid=04374a8f-a159-...\""
+          exit 1
+        fi
+        uv run mindcap capture suno "{{.CLI_ARGS}}"
+    silent: false
+
+  suno:verify:
+    desc: >-
+      Verify the integrity of a captured Suno archive bundle.
+      Usage: task suno:verify -- "<bundle-path>"
+    cmds:
+      - |
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          echo "Usage: task suno:verify -- \"<bundle-path>\""
+          echo "Tip:   run 'task paths' to locate your archive directory."
+          exit 1
+        fi
+        uv run mindcap verify "{{.CLI_ARGS}}"
+    silent: false
+
+  suno:inspect:
+    desc: >-
+      Inspect a captured Suno workspace archive bundle.
+      Usage: task suno:inspect -- "<bundle-path>"
+    cmds:
+      - |
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          echo "Usage: task suno:inspect -- \"<bundle-path>\""
+          exit 1
+        fi
+        uv run mindcap inspect suno "{{.CLI_ARGS}}"
+    silent: false

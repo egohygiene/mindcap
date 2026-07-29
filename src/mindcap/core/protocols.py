@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from mindcap.core.models import CaptureEnvelope, CaptureRequest, StoredBundle
+from mindcap.core.progress import CaptureProgressReporter
 
 
 class CaptureStrategy(Protocol):
@@ -25,7 +26,11 @@ class SourcePlugin(Protocol):
 
     def strategies(self) -> tuple[str, ...]: ...
 
-    def strategy(self, name: str) -> CaptureStrategy: ...
+    def strategy(
+        self,
+        name: str,
+        reporter: CaptureProgressReporter | None = None,
+    ) -> CaptureStrategy: ...
 
     def normalize(
         self, envelope: CaptureEnvelope, requested_identifier: str

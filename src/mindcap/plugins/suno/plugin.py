@@ -4,6 +4,7 @@ from typing import Any
 
 from mindcap.core.errors import InvalidSourceError
 from mindcap.core.models import CaptureEnvelope
+from mindcap.core.progress import CaptureProgressReporter
 from mindcap.core.protocols import CaptureStrategy
 from mindcap.plugins.suno.archive.storage import SunoWorkspaceStorageStrategy
 from mindcap.plugins.suno.identifiers import (
@@ -30,8 +31,14 @@ class SunoPlugin:
     def strategies(self) -> tuple[str, ...]:
         return ("api",)
 
-    def strategy(self, name: str) -> CaptureStrategy:
-        strategies: dict[str, CaptureStrategy] = {"api": SunoApiCaptureStrategy()}
+    def strategy(
+        self,
+        name: str,
+        reporter: CaptureProgressReporter | None = None,
+    ) -> CaptureStrategy:
+        strategies: dict[str, CaptureStrategy] = {
+            "api": SunoApiCaptureStrategy(reporter=reporter)
+        }
         try:
             return strategies[name]
         except KeyError as error:
