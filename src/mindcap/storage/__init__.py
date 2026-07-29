@@ -1,0 +1,1 @@
+"""Mindcap artifact storage strategies."""

@@ -1,0 +1,63 @@
+{
+  "id": "6a14b69f-7834-83ea-8257-0eceadb41691",
+  "title": "Mindcap Acceptance Fixture",
+  "create_time": 1784304000,
+  "update_time": 1784304120,
+  "current_node": "assistant-selected",
+  "mapping": {
+    "root": {
+      "id": "root",
+      "parent": null,
+      "children": ["user-1"],
+      "message": null
+    },
+    "user-1": {
+      "id": "user-1",
+      "parent": "root",
+      "children": ["assistant-alternate", "assistant-selected"],
+      "message": {
+        "id": "user-1",
+        "author": { "role": "user" },
+        "create_time": 1784304060,
+        "status": "finished_successfully",
+        "content": {
+          "content_type": "text",
+          "parts": ["Can Mindcap preserve this conversation?"]
+        },
+        "metadata": {}
+      }
+    },
+    "assistant-alternate": {
+      "id": "assistant-alternate",
+      "parent": "user-1",
+      "children": [],
+      "message": {
+        "id": "assistant-alternate",
+        "author": { "role": "assistant" },
+        "create_time": 1784304090,
+        "status": "finished_successfully",
+        "content": {
+          "content_type": "text",
+          "parts": ["This is the unselected alternate response."]
+        },
+        "metadata": { "model_slug": "fixture-model" }
+      }
+    },
+    "assistant-selected": {
+      "id": "assistant-selected",
+      "parent": "user-1",
+      "children": [],
+      "message": {
+        "id": "assistant-selected",
+        "author": { "role": "assistant" },
+        "create_time": 1784304120,
+        "status": "finished_successfully",
+        "content": {
+          "content_type": "text",
+          "parts": ["Yes. This response is on the selected path."]
+        },
+        "metadata": { "model_slug": "fixture-model" }
+      }
+    }
+  }
+}
