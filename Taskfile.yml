@@ -1,0 +1,157 @@
+# https://taskfile.dev
+version: "3"
+
+vars:
+  FIXTURE: tests/fixtures/chatgpt/branching-conversation.json
+
+tasks:
+  default:
+    desc: List available Mindcap tasks.
+    cmds:
+      - task --list
+    silent: false
+
+  setup:
+    desc: Install dependencies and prepare the local development environment.
+    cmds:
+      - uv sync
+      - uv run playwright install chromium
+    silent: false
+
+  paths:
+    desc: Display the archive location and dedicated authentication-profile location.
+    cmds:
+      - uv run mindcap paths
+    silent: false
+
+  doctor:
+    desc: Run safe browser diagnostics for the ChatGPT capture profile.
+    cmds:
+      - uv run mindcap doctor chatgpt
+    silent: false
+
+  version:
+    desc: Print the installed Mindcap version.
+    cmds:
+      - uv run mindcap --version
+    silent: false
+
+  auth:
+    desc: >-
+      Authenticate the dedicated ChatGPT browser profile using stable Google
+      Chrome. Opens Chrome directly — complete login manually, then press Enter.
+    cmds:
+      - uv run mindcap auth chatgpt
+    silent: false
+
+  capture:
+    desc: >-
+      Capture a ChatGPT conversation via the browser strategy.
+      Usage: task capture -- "<url-or-uuid>"
+    cmds:
+      - |
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          echo "Usage: task capture -- \"<url-or-uuid>\""
+          echo "Example: task capture -- \"https://chatgpt.com/c/6a14b69f-7834-83ea-8257-0eceadb41691\""
+          exit 1
+        fi
+        uv run mindcap capture chatgpt "{{.CLI_ARGS}}" --strategy "browser"
+    silent: false
+
+  import:
+    desc: >-
+      Import a previously saved ChatGPT JSON payload.
+      Usage: task import -- "<path/to/file.json>"
+    cmds:
+      - |
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          echo "Usage: task import -- \"<path/to/file.json>\""
+          echo "Example: task import -- \"tests/fixtures/chatgpt/branching-conversation.json\""
+          exit 1
+        fi
+        uv run mindcap import chatgpt "{{.CLI_ARGS}}"
+    silent: false
+
+  verify:
+    desc: >-
+      Verify the integrity of a captured archive bundle.
+      Usage: task verify -- "<bundle-path>"
+    cmds:
+      - |
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          echo "Usage: task verify -- \"<bundle-path>\""
+          echo "Tip:   run 'task paths' to locate your archive directory."
+          exit 1
+        fi
+        uv run mindcap verify "{{.CLI_ARGS}}"
+    silent: false
+
+  smoke:
+    desc: >-
+      Run the offline fixture through the full saved-JSON pipeline and verify
+      the bundle. Requires no authentication or network access.
+    vars:
+      SMOKE_DIR:
+        sh: mktemp -d
+    cmds:
+      - >-
+        uv run mindcap import chatgpt
+        "{{.FIXTURE}}"
+        --output "{{.SMOKE_DIR}}"
+      - |
+        BUNDLE=$(ls -d "{{.SMOKE_DIR}}"/conversations/chatgpt/*/v1 2>/dev/null | head -1)
+        if [ -z "$BUNDLE" ]; then
+          echo "Smoke test failed: no bundle directory was created under {{.SMOKE_DIR}}"
+          rm -rf "{{.SMOKE_DIR}}"
+          exit 1
+        fi
+        uv run mindcap verify "$BUNDLE"
+        rm -rf "{{.SMOKE_DIR}}"
+    silent: false
+
+  test:
+    desc: Run the complete automated test suite.
+    cmds:
+      - uv run pytest
+    silent: false
+
+  lint:
+    desc: Check code style with Ruff (linting and format check).
+    cmds:
+      - uv run ruff check .
+      - uv run ruff format --check .
+    silent: false
+
+  format:
+    desc: Apply Ruff formatter and safe automatic lint fixes.
+    cmds:
+      - uv run ruff format .
+      - uv run ruff check --fix .
+    silent: false
+
+  typecheck:
+    desc: Run strict MyPy type checks for source and test paths.
+    cmds:
+      - uv run mypy src tests
+    silent: false
+
+  check:
+    desc: >-
+      Run all quality gates (format check, lint, type check, tests).
+      Stops immediately if any gate fails.
+    cmds:
+      - task: lint
+      - task: typecheck
+      - task: test
+    silent: false
+
+  clean:
+    desc: >-
+      Remove disposable developer artifacts (.pytest_cache, .ruff_cache,
+      .mypy_cache, bytecode caches, coverage output). Never removes archives
+      or authentication state.
+    cmds:
+      - rm -rf .pytest_cache .ruff_cache .mypy_cache htmlcov .coverage
+      - find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+      - find . -type f -name "*.pyc" -delete 2>/dev/null || true
+    silent: false

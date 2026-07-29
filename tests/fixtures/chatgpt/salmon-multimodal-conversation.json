@@ -1,0 +1,184 @@
+{
+  "id": "6a14b69f-7834-83ea-8257-0eceadb41691",
+  "title": "Salmon Candy Recipe",
+  "create_time": 1784304000,
+  "update_time": 1784304180,
+  "current_node": "assistant-visible",
+  "mapping": {
+    "root": {
+      "id": "root",
+      "parent": null,
+      "children": ["system-empty-1"],
+      "message": null
+    },
+    "system-empty-1": {
+      "id": "system-empty-1",
+      "parent": "root",
+      "children": ["user-context"],
+      "message": {
+        "id": "system-empty-1",
+        "author": { "role": "system", "metadata": {} },
+        "create_time": 1784304000,
+        "status": "finished_successfully",
+        "content": { "content_type": "text", "parts": [""] },
+        "metadata": {
+          "is_visually_hidden_from_conversation": true
+        }
+      }
+    },
+    "user-context": {
+      "id": "user-context",
+      "parent": "system-empty-1",
+      "children": ["system-context-1"],
+      "message": {
+        "id": "user-context",
+        "author": { "role": "user", "metadata": {} },
+        "create_time": 1784304005,
+        "status": "finished_successfully",
+        "content": {
+          "content_type": "user_editable_context",
+          "parts": ["The user's name is Alice.\n\nRespond in a friendly tone."]
+        },
+        "metadata": {
+          "is_visually_hidden_from_conversation": true,
+          "is_user_system_message": true
+        }
+      }
+    },
+    "system-context-1": {
+      "id": "system-context-1",
+      "parent": "user-context",
+      "children": ["system-context-2"],
+      "message": {
+        "id": "system-context-1",
+        "author": { "role": "system", "metadata": {} },
+        "create_time": 1784304010,
+        "status": "finished_successfully",
+        "content": { "content_type": "text", "parts": [""] },
+        "metadata": {
+          "is_visually_hidden_from_conversation": true,
+          "is_contextual_answers_system_message": true
+        }
+      }
+    },
+    "system-context-2": {
+      "id": "system-context-2",
+      "parent": "system-context-1",
+      "children": ["system-attachment-routing"],
+      "message": {
+        "id": "system-context-2",
+        "author": { "role": "system", "metadata": {} },
+        "create_time": 1784304015,
+        "status": "finished_successfully",
+        "content": { "content_type": "text", "parts": [""] },
+        "metadata": {
+          "is_visually_hidden_from_conversation": true,
+          "rebase_developer_message": true
+        }
+      }
+    },
+    "system-attachment-routing": {
+      "id": "system-attachment-routing",
+      "parent": "system-context-2",
+      "children": ["model-context"],
+      "message": {
+        "id": "system-attachment-routing",
+        "author": { "role": "system", "metadata": {} },
+        "create_time": 1784304020,
+        "status": "finished_successfully",
+        "content": { "content_type": "text", "parts": [""] },
+        "metadata": {
+          "is_visually_hidden_from_conversation": true,
+          "exclusive_key": "file_routing_attachment_v1"
+        }
+      }
+    },
+    "model-context": {
+      "id": "model-context",
+      "parent": "system-attachment-routing",
+      "children": ["system-empty-2"],
+      "message": {
+        "id": "model-context",
+        "author": { "role": "assistant", "metadata": {} },
+        "create_time": 1784304025,
+        "status": "finished_successfully",
+        "content": {
+          "content_type": "model_editable_context",
+          "parts": ["Model internal context placeholder."]
+        },
+        "metadata": {}
+      }
+    },
+    "system-empty-2": {
+      "id": "system-empty-2",
+      "parent": "model-context",
+      "children": ["user-multimodal"],
+      "message": {
+        "id": "system-empty-2",
+        "author": { "role": "system", "metadata": {} },
+        "create_time": 1784304030,
+        "status": "finished_successfully",
+        "content": { "content_type": "text", "parts": [""] },
+        "metadata": {
+          "is_visually_hidden_from_conversation": true
+        }
+      }
+    },
+    "user-multimodal": {
+      "id": "user-multimodal",
+      "parent": "system-empty-2",
+      "children": ["assistant-visible"],
+      "message": {
+        "id": "user-multimodal",
+        "author": { "role": "user", "metadata": {} },
+        "create_time": 1784304060,
+        "status": "finished_successfully",
+        "content": {
+          "content_type": "multimodal_text",
+          "parts": [
+            {
+              "content_type": "image_asset_pointer",
+              "asset_pointer": "sediment://file_0000000091e071fd974af51a1240f6e2",
+              "size_bytes": 286873,
+              "width": 1200,
+              "height": 1200
+            },
+            "How would I make this candy salmon that's so bomb :"
+          ]
+        },
+        "metadata": {
+          "is_visually_hidden_from_conversation": false,
+          "attachments": [
+            {
+              "name": "7508.webp",
+              "id": "file_0000000091e071fd974af51a1240f6e2",
+              "size": 286873,
+              "mime_type": "image/webp"
+            }
+          ]
+        }
+      }
+    },
+    "assistant-visible": {
+      "id": "assistant-visible",
+      "parent": "user-multimodal",
+      "children": [],
+      "message": {
+        "id": "assistant-visible",
+        "author": { "role": "assistant", "metadata": {} },
+        "create_time": 1784304120,
+        "status": "finished_successfully",
+        "content": {
+          "content_type": "text",
+          "parts": [
+            "This style of \"salmon candy\" is basically a sweet-glazed, jerky-style smoked salmon. Here's how to make it..."
+          ]
+        },
+        "metadata": {
+          "model_slug": "gpt-4o",
+          "is_visually_hidden_from_conversation": false
+        }
+      }
+    }
+  }
+}
