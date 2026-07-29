@@ -1,0 +1,28 @@
+{
+  "id": "8f8fd77f-c5bf-467a-8cb5-558fdbf86386",
+  "title": "Synthetic Suno Workspace",
+  "description": "Sanitized fixture for workspace archival.",
+  "created_at": "2025-01-01T00:00:00Z",
+  "updated_at": "2025-01-02T00:00:00Z",
+  "clips": [
+    {
+      "id": "clip-alpha",
+      "title": "Clip Alpha",
+      "status": "complete",
+      "model_name": "chirp-v4",
+      "audio_url": "https://cdn.example.test/audio.mp3?signature=secret",
+      "video_url": "https://cdn.example.test/video.mp4?signature=secret",
+      "image_url": "https://cdn.example.test/cover.jpg?signature=secret",
+      "metadata": {
+        "prompt": "Dream-pop chorus",
+        "lyrics_prompt": "Write a hopeful hook",
+        "style_prompt": "dream pop, shimmering guitars",
+        "excluded_styles": ["metal"],
+        "lyrics": "We glow in satellite light",
+        "duration": 123.4,
+        "avg_bpm": 112.0,
+        "make_instrumental": false
+      }
+    }
+  ]
+}

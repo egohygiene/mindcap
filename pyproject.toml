@@ -20,6 +20,7 @@ classifiers = [
   "Typing :: Typed",
 ]
 dependencies = [
+  "httpx>=0.28.1",
   "platformdirs>=4.0",
   "playwright>=1.50",
   "pydantic>=2.10",

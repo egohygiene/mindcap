@@ -1,0 +1,1 @@
+"""Suno source plugin."""
