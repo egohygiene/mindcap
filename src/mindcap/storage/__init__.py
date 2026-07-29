@@ -1,4 +1,5 @@
 """Mindcap artifact storage strategies."""
+
 from __future__ import annotations
 
 import json

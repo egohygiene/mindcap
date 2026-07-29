@@ -191,9 +191,7 @@ class FilesystemStorageStrategy:
                         "visible_message_count": normalized.get(
                             "visible_message_count"
                         ),
-                        "hidden_message_count": normalized.get(
-                            "hidden_message_count"
-                        ),
+                        "hidden_message_count": normalized.get("hidden_message_count"),
                         "structural_node_count": normalized.get(
                             "structural_node_count"
                         ),
@@ -210,14 +208,12 @@ class FilesystemStorageStrategy:
                         "attachments_downloaded": sum(
                             1
                             for a in (normalized.get("attachments") or [])
-                            if a.get("capture_status")
-                            in {"downloaded", "verified"}
+                            if a.get("capture_status") in {"downloaded", "verified"}
                         ),
                         "attachments_unavailable": sum(
                             1
                             for a in (normalized.get("attachments") or [])
-                            if a.get("capture_status")
-                            not in {"downloaded", "verified"}
+                            if a.get("capture_status") not in {"downloaded", "verified"}
                         ),
                     }
                 ),

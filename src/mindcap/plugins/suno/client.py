@@ -59,7 +59,12 @@ class SunoClient:
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self.api_origin = (api_origin or suno_api_origin()).rstrip("/")
-        self.state = state or load_suno_auth_state(required=True)
+        loaded_state = state or load_suno_auth_state(required=True)
+        if loaded_state is None:
+            raise AuthenticationRequiredError(
+                "Run `mindcap auth suno --cookie-stdin` first."
+            )
+        self.state = loaded_state
         self._client = httpx.Client(
             base_url=self.api_origin,
             follow_redirects=True,
@@ -74,7 +79,7 @@ class SunoClient:
         )
 
     def _headers(self) -> dict[str, str]:
-        if self.state is None or not self.state.clerk_client_cookie:
+        if not self.state.clerk_client_cookie:
             raise AuthenticationRequiredError(
                 "Run `mindcap auth suno --cookie-stdin` first."
             )
@@ -88,14 +93,21 @@ class SunoClient:
             "x-browser-token": self._browser_token(),
             "cookie": self.state.cookie_header
             or f"__client={self.state.clerk_client_cookie}",
-            "authorization": "******",
+            "authorization": " ".join(("Bearer", self.state.jwt or "")),
         }
         if not self.state.jwt:
             headers.pop("authorization")
         return headers
 
+    def _safe_headers(self, headers: dict[str, str]) -> dict[str, str]:
+        safe_headers = dict(headers)
+        for header in ("authorization", "cookie", "x-browser-token"):
+            if header in safe_headers:
+                safe_headers[header] = "<redacted>"
+        return safe_headers
+
     def _clerk_headers(self) -> dict[str, str]:
-        if self.state is None or not self.state.clerk_client_cookie:
+        if not self.state.clerk_client_cookie:
             raise AuthenticationRequiredError(
                 "Stored Suno auth state is missing the Clerk cookie."
             )
@@ -182,11 +194,12 @@ class SunoClient:
         retry_on_auth: bool = True,
     ) -> httpx.Response:
         self.ensure_jwt()
+        headers = self._headers()
         response = self._client.request(
             method,
             path,
             json=json_body,
-            headers=self._headers(),
+            headers=headers,
         )
         if (
             response.status_code in {401, 403}
@@ -205,7 +218,8 @@ class SunoClient:
             return response
         if response.status_code >= 400:
             raise SunoApiError(
-                f"Suno API request failed ({response.status_code}) for {path}."
+                f"Suno API request failed ({response.status_code}) for {path} "
+                f"with safe_headers={self._safe_headers(headers)}."
             )
         return response
 
@@ -281,6 +295,7 @@ class SunoClient:
     ) -> tuple[dict[str, Any], SunoResponseRecord]:
         for path in (
             f"/api/workspaces/{workspace_id}",
+            f"/api/workspaces/{workspace_id}/",
             f"/api/workspace/{workspace_id}",
             f"/api/projects/{workspace_id}",
             f"/api/project/{workspace_id}",
@@ -299,6 +314,7 @@ class SunoClient:
         pages: list[tuple[dict[str, Any], SunoResponseRecord]] = []
         for path in (
             f"/api/workspaces/{workspace_id}/clips",
+            f"/api/workspaces/{workspace_id}/clips/",
             f"/api/workspace/{workspace_id}/clips",
         ):
             result = self.try_get_json(path, category="clips-page")
@@ -313,6 +329,7 @@ class SunoClient:
         for path in (
             f"/api/gen/{clip_id}",
             f"/api/clips/{clip_id}",
+            f"/api/clips/{clip_id}/",
             f"/api/clip/{clip_id}",
         ):
             result = self.try_get_json(path, category="clip")
@@ -326,6 +343,7 @@ class SunoClient:
         for path in (
             f"/api/gen/{clip_id}/lyrics/",
             f"/api/gen/{clip_id}/lyrics",
+            f"/api/clips/{clip_id}/lyrics",
         ):
             result = self.try_get_json(path, category="lyrics")
             if result is not None:
