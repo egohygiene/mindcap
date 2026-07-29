@@ -97,7 +97,9 @@ def test_get_workspace_probes_known_paths_until_one_succeeds() -> None:
     payload, _ = client.get_workspace("workspace-123")
 
     assert payload["id"] == "workspace-123"
+    # Production Studio API paths are probed first; legacy paths follow.
     assert attempted_paths[:2] == [
-        "/api/workspaces/workspace-123",
-        "/api/workspaces/workspace-123/",
+        "/api/project/workspace-123",
+        "/api/project/workspace-123/",
     ]
+    assert "/api/workspaces/workspace-123/" in attempted_paths
