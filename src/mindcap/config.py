@@ -45,7 +45,9 @@ def suno_auth_file() -> Path:
 
 
 def suno_api_origin() -> str:
-    return os.environ.get("MINDCAP_SUNO_API_ORIGIN", "https://suno.com").rstrip("/")
+    return os.environ.get(
+        "MINDCAP_SUNO_API_ORIGIN", "https://studio-api-prod.suno.com"
+    ).rstrip("/")
 
 
 def ensure_private_directory(path: Path) -> Path:

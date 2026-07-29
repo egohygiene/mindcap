@@ -1,0 +1,241 @@
+{
+  "id": "proj-a1b2c3d4-0000-0000-0000-000000000001",
+  "name": "Synthetic Production Project",
+  "description": "Sanitized fixture mirroring the production Studio API response.",
+  "clip_count": 3,
+  "current_page": 1,
+  "shared": false,
+  "is_owned": true,
+  "is_public": false,
+  "is_trashed": false,
+  "project_clips": [
+    {
+      "relative_index": 0,
+      "pinned": false,
+      "batch_index": 0,
+      "clip": {
+        "id": "clip-prod-001",
+        "entity_type": "gen",
+        "title": "Satellite Light",
+        "status": "complete",
+        "created_at": "2025-03-01T10:00:00Z",
+        "duration": 183.5,
+        "model_name": "chirp-v4",
+        "major_model_version": "v4",
+        "uses_latest_model": true,
+        "audio_url": "https://cdn.example.test/clip-prod-001/audio.mp3?sig=redacted",
+        "video_url": "https://cdn.example.test/clip-prod-001/video.mp4?sig=redacted",
+        "image_url": "https://cdn.example.test/clip-prod-001/cover.jpg?sig=redacted",
+        "image_large_url": "https://cdn.example.test/clip-prod-001/cover-large.jpg?sig=redacted",
+        "media_urls": [
+          {
+            "content_type": "audio/mpeg",
+            "encoding": "mp3",
+            "delivery": "cdn",
+            "url": "https://cdn.example.test/clip-prod-001/audio.mp3?sig=redacted"
+          },
+          {
+            "content_type": "audio/mp4",
+            "encoding": "m4a-opus",
+            "delivery": "cdn",
+            "url": "https://cdn.example.test/clip-prod-001/audio.m4a?sig=redacted"
+          }
+        ],
+        "display_tags": ["dream pop", "shimmering guitars"],
+        "badges": ["featured"],
+        "secondary_badges": [],
+        "edited_clip_id": null,
+        "cover_clip_id": null,
+        "user_id": "user-synthetic-001",
+        "display_name": "Synthetic Artist",
+        "handle": "synthetic_artist",
+        "is_public": false,
+        "explicit": false,
+        "comment_count": 0,
+        "flag_count": 0,
+        "ownership": {
+          "is_owner": true,
+          "can_edit": true,
+          "can_delete": true
+        },
+        "reactions": {
+          "play_count": 42,
+          "skip_count": 3,
+          "reaction_type": null,
+          "flagged": false,
+          "updated_at": "2025-03-02T00:00:00Z"
+        },
+        "action_config": {
+          "actions": ["share", "edit", "delete"],
+          "can_remix": true,
+          "can_cover": false
+        },
+        "metadata": {
+          "prompt": "",
+          "tags": "dream pop shimmering guitars hopeful",
+          "display_tags": ["dream pop", "shimmering guitars"],
+          "lyrics": "We glow in satellite light\nForever spinning through the night",
+          "duration": 183.5,
+          "error_message": null,
+          "task": "generate",
+          "type": "gen",
+          "stream": false,
+          "refund_credits": false,
+          "make_instrumental": false,
+          "has_vocal": true,
+          "can_publish_with_vocal": true,
+          "has_stem": false,
+          "is_mumble": false,
+          "sliders": {
+            "audio_weight": 0.6,
+            "style_weight": 0.8,
+            "weirdness_constraint": 0.15
+          }
+        }
+      }
+    },
+    {
+      "relative_index": 1,
+      "pinned": false,
+      "batch_index": 0,
+      "clip": {
+        "id": "clip-prod-002",
+        "entity_type": "gen",
+        "title": "Remix of Satellite Light",
+        "status": "complete",
+        "created_at": "2025-03-05T14:00:00Z",
+        "duration": 195.0,
+        "model_name": "chirp-v4",
+        "major_model_version": "v4",
+        "uses_latest_model": true,
+        "audio_url": "https://cdn.example.test/clip-prod-002/audio.mp3?sig=redacted",
+        "video_url": null,
+        "image_url": "https://cdn.example.test/clip-prod-002/cover.jpg?sig=redacted",
+        "image_large_url": null,
+        "media_urls": [
+          {
+            "content_type": "audio/mpeg",
+            "encoding": "mp3",
+            "delivery": "cdn",
+            "url": "https://cdn.example.test/clip-prod-002/audio.mp3?sig=redacted"
+          }
+        ],
+        "display_tags": ["upbeat", "electronic"],
+        "badges": [],
+        "secondary_badges": ["remix"],
+        "edited_clip_id": "clip-prod-001",
+        "cover_clip_id": null,
+        "user_id": "user-synthetic-001",
+        "display_name": "Synthetic Artist",
+        "handle": "synthetic_artist",
+        "is_public": false,
+        "explicit": false,
+        "comment_count": 0,
+        "flag_count": 0,
+        "ownership": {
+          "is_owner": true,
+          "can_edit": true,
+          "can_delete": true
+        },
+        "reactions": {
+          "play_count": 10,
+          "skip_count": 0,
+          "reaction_type": null,
+          "flagged": false,
+          "updated_at": "2025-03-06T00:00:00Z"
+        },
+        "action_config": {
+          "actions": ["share", "edit", "delete"],
+          "can_remix": false,
+          "can_cover": true,
+          "future_action": "pending_review"
+        },
+        "metadata": {
+          "prompt": "upbeat electronic remix",
+          "tags": null,
+          "display_tags": [],
+          "lyrics": "Electric dreams and neon nights",
+          "duration": 195.0,
+          "error_message": null,
+          "task": "edit",
+          "type": "gen",
+          "stream": false,
+          "refund_credits": false,
+          "make_instrumental": false,
+          "has_vocal": true,
+          "can_publish_with_vocal": true,
+          "has_stem": false,
+          "is_mumble": false,
+          "sliders": {
+            "audio_weight": 0.5,
+            "new_experimental_slider": 0.9
+          }
+        }
+      }
+    },
+    {
+      "relative_index": 2,
+      "pinned": true,
+      "batch_index": 1,
+      "clip": {
+        "id": "clip-prod-003",
+        "entity_type": "gen",
+        "title": "Instrumental Version",
+        "status": "complete",
+        "created_at": "2025-03-10T08:00:00Z",
+        "duration": 183.5,
+        "model_name": "chirp-v4",
+        "major_model_version": "v4",
+        "uses_latest_model": true,
+        "audio_url": "https://cdn.example.test/clip-prod-003/audio.mp3?sig=redacted",
+        "video_url": null,
+        "image_url": "https://cdn.example.test/clip-prod-003/cover.jpg?sig=redacted",
+        "image_large_url": null,
+        "media_urls": [],
+        "display_tags": ["instrumental", "ambient"],
+        "badges": [],
+        "secondary_badges": [],
+        "edited_clip_id": null,
+        "cover_clip_id": "clip-prod-001",
+        "user_id": "user-synthetic-001",
+        "display_name": "Synthetic Artist",
+        "handle": "synthetic_artist",
+        "is_public": false,
+        "explicit": false,
+        "comment_count": 0,
+        "flag_count": 0,
+        "ownership": {
+          "is_owner": true,
+          "can_edit": false,
+          "can_delete": true
+        },
+        "reactions": {
+          "play_count": 5,
+          "skip_count": 1,
+          "reaction_type": null,
+          "flagged": false,
+          "updated_at": "2025-03-11T00:00:00Z"
+        },
+        "action_config": {},
+        "metadata": {
+          "prompt": "ambient instrumental version",
+          "tags": "instrumental ambient",
+          "display_tags": ["instrumental"],
+          "lyrics": "",
+          "duration": 183.5,
+          "error_message": null,
+          "task": "generate",
+          "type": "gen",
+          "stream": false,
+          "refund_credits": false,
+          "make_instrumental": true,
+          "has_vocal": false,
+          "can_publish_with_vocal": false,
+          "has_stem": true,
+          "is_mumble": false,
+          "sliders": {}
+        }
+      }
+    }
+  ]
+}
