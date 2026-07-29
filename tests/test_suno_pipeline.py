@@ -8,7 +8,12 @@ from unittest.mock import patch
 from typer.testing import CliRunner
 
 from mindcap.cli import app
-from mindcap.core.models import CaptureEnvelope, CaptureRequest, CapturedAsset, RawResponseUnit
+from mindcap.core.models import (
+    CapturedAsset,
+    CaptureEnvelope,
+    CaptureRequest,
+    RawResponseUnit,
+)
 from mindcap.plugins.suno.plugin import SunoPlugin
 
 WORKSPACE_ID = "8f8fd77f-c5bf-467a-8cb5-558fdbf86386"
@@ -148,7 +153,6 @@ def test_capture_defaults_to_plugin_strategy_for_suno(tmp_path: Path) -> None:
         )
 
     assert result.exit_code == 0
-    assert (
-        str(tmp_path / "workspaces" / "suno" / f"suno-{WORKSPACE_ID}" / "v1")
-        in result.stdout.replace("\n", "")
-    )
+    assert str(
+        tmp_path / "workspaces" / "suno" / f"suno-{WORKSPACE_ID}" / "v1"
+    ) in result.stdout.replace("\n", "")

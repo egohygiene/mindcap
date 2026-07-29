@@ -4,8 +4,9 @@ Mindcap is an extensible Python CLI for capturing source material, preserving a
 verified archive, and preparing canonical inputs for knowledge extraction and
 the Ego Hygiene Mind Garden.
 
-ChatGPT conversations are the first source plugin. The architecture is designed
-for future webpage, PDF, image, repository, document, and media plugins.
+Mindcap currently ships ChatGPT and Suno source plugins. The architecture is
+designed for future webpage, PDF, image, repository, document, and media
+plugins.
 
 > [!WARNING]
 > The private ChatGPT browser strategy is experimental. ChatGPT does not expose
@@ -100,6 +101,30 @@ uv run mindcap --help
 uv run mindcap --version
 uv run mindcap plugins list
 uv run mindcap paths
+```
+
+## Suno Workspace Capture
+
+Mindcap includes an experimental Suno workspace archive flow with a provider
+default `api` capture strategy.
+
+Store a Clerk `__client` cookie safely from standard input:
+
+```bash
+printf '%s' "${SUNO_CLERK_COOKIE}" | \
+  uv run mindcap auth suno --cookie-stdin
+```
+
+Inspect safe Suno diagnostics:
+
+```bash
+uv run mindcap doctor suno
+```
+
+Capture a workspace archive using a placeholder workspace UUID:
+
+```bash
+uv run mindcap capture suno "00000000-0000-0000-0000-000000000000"
 ```
 
 ## Prove the Offline Pipeline

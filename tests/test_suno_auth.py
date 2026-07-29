@@ -19,7 +19,8 @@ def test_normalize_cookie_input_accepts_raw_client_cookie() -> None:
 
 def test_normalize_cookie_input_accepts_cookie_header() -> None:
     normalized = normalize_cookie_input(
-        'Cookie: foo=bar; __client=client-cookie-value; ajs_anonymous_id=%22device-123%22'
+        "Cookie: foo=bar; __client=client-cookie-value; "
+        "ajs_anonymous_id=%22device-123%22"
     )
     assert normalized.clerk_client_cookie == "client-cookie-value"
     assert normalized.device_id == "device-123"

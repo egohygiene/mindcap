@@ -5,7 +5,7 @@ import platform
 import subprocess
 import sys
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 from rich.console import Console

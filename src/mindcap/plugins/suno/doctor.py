@@ -67,7 +67,11 @@ def doctor_suno(console: Console, *, verbose: bool = False) -> None:
     )
     table.add_row(
         "Secrets redacted successfully",
-        "yes" if redact_secret(getattr(state, "clerk_client_cookie", None)).startswith("<redacted") else "no",
+        "yes"
+        if redact_secret(getattr(state, "clerk_client_cookie", None)).startswith(
+            "<redacted"
+        )
+        else "no",
     )
     console.print(table)
 

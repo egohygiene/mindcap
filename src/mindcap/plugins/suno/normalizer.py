@@ -20,7 +20,11 @@ def _workspace_payload(envelope: CaptureEnvelope) -> dict[str, Any]:
     return {}
 
 
-def _clip_payloads(envelope: CaptureEnvelope) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+def _clip_payloads(
+    envelope: CaptureEnvelope,
+) -> tuple[
+    dict[str, dict[str, Any]], dict[str, dict[str, Any]], dict[str, dict[str, Any]]
+]:
     clips: dict[str, dict[str, Any]] = {}
     lyrics: dict[str, dict[str, Any]] = {}
     aligned: dict[str, dict[str, Any]] = {}
@@ -44,12 +48,16 @@ def _clip_payloads(envelope: CaptureEnvelope) -> tuple[dict[str, dict[str, Any]]
     return clips, lyrics, aligned
 
 
-def normalize_suno(envelope: CaptureEnvelope, requested_identifier: str) -> dict[str, Any]:
+def normalize_suno(
+    envelope: CaptureEnvelope, requested_identifier: str
+) -> dict[str, Any]:
     workspace = _workspace_payload(envelope)
     clips, lyric_payloads, aligned_payloads = _clip_payloads(envelope)
     normalized_clips: list[dict[str, Any]] = []
     for clip_id, clip in sorted(clips.items()):
-        metadata = clip.get("metadata") if isinstance(clip.get("metadata"), dict) else {}
+        metadata = (
+            clip.get("metadata") if isinstance(clip.get("metadata"), dict) else {}
+        )
         lyrics_payload = lyric_payloads.get(clip_id) or {}
         aligned_payload = aligned_payloads.get(clip_id) or {}
         normalized_clips.append(
@@ -61,24 +69,34 @@ def normalize_suno(envelope: CaptureEnvelope, requested_identifier: str) -> dict
                 "created_at": clip.get("created_at") or metadata.get("created_at"),
                 "updated_at": clip.get("updated_at") or metadata.get("updated_at"),
                 "duration": metadata.get("duration") or clip.get("duration"),
-                "bpm": metadata.get("bpm") or metadata.get("avg_bpm") or clip.get("bpm"),
-                "model": clip.get("model_name") or metadata.get("model") or metadata.get("model_name"),
+                "bpm": metadata.get("bpm")
+                or metadata.get("avg_bpm")
+                or clip.get("bpm"),
+                "model": clip.get("model_name")
+                or metadata.get("model")
+                or metadata.get("model_name"),
                 "tags": metadata.get("tags") or clip.get("tags") or [],
-                "instrumental": metadata.get("make_instrumental") or clip.get("instrumental"),
+                "instrumental": metadata.get("make_instrumental")
+                or clip.get("instrumental"),
                 "lyrics": {
-                    "plain": lyrics_payload.get("text") or metadata.get("lyrics") or clip.get("lyrics"),
+                    "plain": lyrics_payload.get("text")
+                    or metadata.get("lyrics")
+                    or clip.get("lyrics"),
                     "aligned_words": aligned_payload.get("aligned_words") or [],
                 },
                 "prompts": {
                     "prompt": metadata.get("prompt") or clip.get("prompt"),
-                    "lyrics_prompt": metadata.get("lyrics_prompt") or clip.get("lyrics_prompt"),
-                    "style_prompt": metadata.get("style_prompt") or clip.get("style_prompt"),
+                    "lyrics_prompt": metadata.get("lyrics_prompt")
+                    or clip.get("lyrics_prompt"),
+                    "style_prompt": metadata.get("style_prompt")
+                    or clip.get("style_prompt"),
                     "excluded_styles": metadata.get("excluded_styles") or [],
                 },
                 "audio_url": clip.get("audio_url"),
                 "video_url": clip.get("video_url"),
                 "image_url": clip.get("image_url"),
-                "image_large_url": clip.get("image_large_url") or metadata.get("image_large_url"),
+                "image_large_url": clip.get("image_large_url")
+                or metadata.get("image_large_url"),
                 "parent_id": clip.get("parent_id") or metadata.get("parent_id"),
                 "source_id": clip.get("source_id") or metadata.get("source_id"),
                 "provider_metadata": clip,
@@ -102,7 +120,9 @@ def normalize_suno(envelope: CaptureEnvelope, requested_identifier: str) -> dict
         "source_id": f"suno-{requested_identifier}",
         "workspace_id": requested_identifier,
         "canonical_url": envelope.canonical_url,
-        "title": workspace.get("title") or workspace.get("name") or f"Suno Workspace {requested_identifier}",
+        "title": workspace.get("title")
+        or workspace.get("name")
+        or f"Suno Workspace {requested_identifier}",
         "description": workspace.get("description"),
         "created_at": workspace.get("created_at"),
         "updated_at": workspace.get("updated_at"),
@@ -119,7 +139,9 @@ def normalize_suno(envelope: CaptureEnvelope, requested_identifier: str) -> dict
                 "unit_id": unit.unit_id,
                 "endpoint_category": unit.endpoint_category,
                 "source_url": unit.source_url,
-                "clip_id": unit.unit_id.split("-", 1)[1] if unit.unit_id.startswith(("clip-", "lyrics-", "aligned-lyrics-")) else None,
+                "clip_id": unit.unit_id.split("-", 1)[1]
+                if unit.unit_id.startswith(("clip-", "lyrics-", "aligned-lyrics-"))
+                else None,
             }
             for unit in envelope.response_units
         ],

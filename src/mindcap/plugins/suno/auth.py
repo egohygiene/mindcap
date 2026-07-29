@@ -97,7 +97,9 @@ def load_suno_auth_state(*, required: bool = False) -> SunoAuthState | None:
     path = suno_auth_file()
     if not path.is_file():
         if required:
-            raise AuthenticationRequiredError("Run `mindcap auth suno --cookie-stdin` first.")
+            raise AuthenticationRequiredError(
+                "Run `mindcap auth suno --cookie-stdin` first."
+            )
         return None
     state = SunoAuthState(**json.loads(path.read_text(encoding="utf-8")))
     if required and not state.clerk_client_cookie:
@@ -151,7 +153,9 @@ def jwt_expiration(state: SunoAuthState | None) -> datetime | None:
     return datetime.fromtimestamp(exp, tz=UTC)
 
 
-def jwt_state(state: SunoAuthState | None, *, now: datetime | None = None) -> tuple[str, str]:
+def jwt_state(
+    state: SunoAuthState | None, *, now: datetime | None = None
+) -> tuple[str, str]:
     expires_at = jwt_expiration(state)
     if expires_at is None:
         return "missing", "No JWT is currently stored."

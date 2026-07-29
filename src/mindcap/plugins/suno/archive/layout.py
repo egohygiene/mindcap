@@ -9,7 +9,9 @@ def source_root(artifact_root: Path, provider: str, source_id: str) -> Path:
     return artifact_root / "workspaces" / provider / source_id
 
 
-def bundle_path(artifact_root: Path, provider: str, source_id: str, version: int) -> Path:
+def bundle_path(
+    artifact_root: Path, provider: str, source_id: str, version: int
+) -> Path:
     return source_root(artifact_root, provider, source_id) / f"v{version}"
 
 

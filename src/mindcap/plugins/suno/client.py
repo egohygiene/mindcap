@@ -69,11 +69,15 @@ class SunoClient:
 
     def _browser_token(self) -> str:
         payload = json.dumps({"timestamp": int(datetime.now(UTC).timestamp() * 1000)})
-        return json.dumps({"token": base64.b64encode(payload.encode("utf-8")).decode("ascii")})
+        return json.dumps(
+            {"token": base64.b64encode(payload.encode("utf-8")).decode("ascii")}
+        )
 
     def _headers(self) -> dict[str, str]:
         if self.state is None or not self.state.clerk_client_cookie:
-            raise AuthenticationRequiredError("Run `mindcap auth suno --cookie-stdin` first.")
+            raise AuthenticationRequiredError(
+                "Run `mindcap auth suno --cookie-stdin` first."
+            )
         headers = {
             "accept": "application/json",
             "origin": self.api_origin,
@@ -82,8 +86,9 @@ class SunoClient:
             "x-requested-with": "XMLHttpRequest",
             "x-device-id": self.state.device_id or "unknown-device",
             "x-browser-token": self._browser_token(),
-            "cookie": self.state.cookie_header or f"__client={self.state.clerk_client_cookie}",
-            "authorization": f"******",
+            "cookie": self.state.cookie_header
+            or f"__client={self.state.clerk_client_cookie}",
+            "authorization": "******",
         }
         if not self.state.jwt:
             headers.pop("authorization")
@@ -91,7 +96,9 @@ class SunoClient:
 
     def _clerk_headers(self) -> dict[str, str]:
         if self.state is None or not self.state.clerk_client_cookie:
-            raise AuthenticationRequiredError("Stored Suno auth state is missing the Clerk cookie.")
+            raise AuthenticationRequiredError(
+                "Stored Suno auth state is missing the Clerk cookie."
+            )
         return {
             "authorization": self.state.clerk_client_cookie,
             "cookie": f"__client={self.state.clerk_client_cookie}",
@@ -113,9 +120,13 @@ class SunoClient:
                 f"Clerk session discovery failed with status {response.status_code}."
             )
         payload = response.json()
-        response_payload = payload.get("response") if isinstance(payload, dict) else None
+        response_payload = (
+            payload.get("response") if isinstance(payload, dict) else None
+        )
         if not isinstance(response_payload, dict):
-            raise AuthenticationRequiredError("Clerk session discovery returned an unexpected payload.")
+            raise AuthenticationRequiredError(
+                "Clerk session discovery returned an unexpected payload."
+            )
         session_id = response_payload.get("last_active_session_id")
         if not session_id:
             sessions = response_payload.get("sessions")
@@ -124,12 +135,16 @@ class SunoClient:
                 if isinstance(first, dict):
                     session_id = first.get("id")
         if not isinstance(session_id, str) or not session_id:
-            raise AuthenticationRequiredError("No active Suno session was found for the stored Clerk cookie.")
+            raise AuthenticationRequiredError(
+                "No active Suno session was found for the stored Clerk cookie."
+            )
         self.state.session_id = session_id
 
     def refresh_jwt(self) -> None:
         if not has_refreshable_clerk_state(self.state):
-            raise AuthenticationRequiredError("Stored Suno auth state cannot refresh JWTs.")
+            raise AuthenticationRequiredError(
+                "Stored Suno auth state cannot refresh JWTs."
+            )
         if not self.state.session_id:
             self._refresh_session_id()
         response = self._client.post(
@@ -173,7 +188,11 @@ class SunoClient:
             json=json_body,
             headers=self._headers(),
         )
-        if response.status_code in {401, 403} and retry_on_auth and has_refreshable_clerk_state(self.state):
+        if (
+            response.status_code in {401, 403}
+            and retry_on_auth
+            and has_refreshable_clerk_state(self.state)
+        ):
             self.refresh_jwt()
             return self._request(
                 method,
@@ -185,10 +204,14 @@ class SunoClient:
         if expected_statuses and response.status_code in expected_statuses:
             return response
         if response.status_code >= 400:
-            raise SunoApiError(f"Suno API request failed ({response.status_code}) for {path}.")
+            raise SunoApiError(
+                f"Suno API request failed ({response.status_code}) for {path}."
+            )
         return response
 
-    def get_json(self, path: str, *, category: str) -> tuple[dict[str, Any], SunoResponseRecord]:
+    def get_json(
+        self, path: str, *, category: str
+    ) -> tuple[dict[str, Any], SunoResponseRecord]:
         response = self._request("GET", path)
         body = response.content
         payload = response.json()
@@ -196,7 +219,8 @@ class SunoClient:
             raise SunoApiError(f"Suno API returned a non-object payload for {path}.")
         return payload, SunoResponseRecord(
             category=category,
-            url=redact_signed_url(str(response.request.url)) or str(response.request.url),
+            url=redact_signed_url(str(response.request.url))
+            or str(response.request.url),
             body=body,
             media_type=response.headers.get("content-type", "application/json"),
             retrieved_at=datetime.now(UTC),
@@ -218,7 +242,8 @@ class SunoClient:
             return None
         return payload, SunoResponseRecord(
             category=category,
-            url=redact_signed_url(str(response.request.url)) or str(response.request.url),
+            url=redact_signed_url(str(response.request.url))
+            or str(response.request.url),
             body=body,
             media_type=response.headers.get("content-type", "application/json"),
             retrieved_at=datetime.now(UTC),
@@ -239,7 +264,8 @@ class SunoClient:
             raise SunoApiError(f"Suno API returned a non-object payload for {path}.")
         return data, SunoResponseRecord(
             category=category,
-            url=redact_signed_url(str(response.request.url)) or str(response.request.url),
+            url=redact_signed_url(str(response.request.url))
+            or str(response.request.url),
             body=body,
             media_type=response.headers.get("content-type", "application/json"),
             retrieved_at=datetime.now(UTC),
@@ -250,7 +276,9 @@ class SunoClient:
         payload, _ = self.get_json("/api/billing/info/", category="billing")
         return payload
 
-    def get_workspace(self, workspace_id: str) -> tuple[dict[str, Any], SunoResponseRecord]:
+    def get_workspace(
+        self, workspace_id: str
+    ) -> tuple[dict[str, Any], SunoResponseRecord]:
         for path in (
             f"/api/workspaces/{workspace_id}",
             f"/api/workspace/{workspace_id}",
@@ -279,7 +307,9 @@ class SunoClient:
                 return pages
         return pages
 
-    def get_clip_detail(self, clip_id: str) -> tuple[dict[str, Any], SunoResponseRecord] | None:
+    def get_clip_detail(
+        self, clip_id: str
+    ) -> tuple[dict[str, Any], SunoResponseRecord] | None:
         for path in (
             f"/api/gen/{clip_id}",
             f"/api/clips/{clip_id}",
@@ -290,7 +320,9 @@ class SunoClient:
                 return result
         return None
 
-    def get_lyrics(self, clip_id: str) -> tuple[dict[str, Any], SunoResponseRecord] | None:
+    def get_lyrics(
+        self, clip_id: str
+    ) -> tuple[dict[str, Any], SunoResponseRecord] | None:
         for path in (
             f"/api/gen/{clip_id}/lyrics/",
             f"/api/gen/{clip_id}/lyrics",
@@ -327,7 +359,9 @@ class SunoClient:
         part_path.replace(destination)
         return destination, {
             "byte_size": destination.stat().st_size,
-            "media_type": response.headers.get("content-type", "application/octet-stream"),
+            "media_type": response.headers.get(
+                "content-type", "application/octet-stream"
+            ),
             "downloaded_at": datetime.now(UTC).isoformat(),
             "source_url": redact_signed_url(url),
         }

@@ -14,7 +14,9 @@ def _parse_uuid(value: str) -> str:
     try:
         return str(UUID(value.strip()))
     except (ValueError, AttributeError) as error:
-        raise InvalidSourceError(f'Invalid Suno workspace identifier: "{value}"') from error
+        raise InvalidSourceError(
+            f'Invalid Suno workspace identifier: "{value}"'
+        ) from error
 
 
 def canonicalize_suno_identifier(value: str) -> tuple[str, str | None]:
@@ -30,9 +32,13 @@ def canonicalize_suno_identifier(value: str) -> tuple[str, str | None]:
             raise
         hostname = (parsed.hostname or "").lower()
         if hostname not in _SUNO_HOSTS:
-            raise InvalidSourceError(f'Unsupported Suno host: "{hostname or parsed.netloc}"')
+            raise InvalidSourceError(
+                f'Unsupported Suno host: "{hostname or parsed.netloc}"'
+            ) from None
         if any(parsed.path.startswith(prefix) for prefix in _CLIP_PATH_PREFIXES):
-            raise InvalidSourceError("Clip URLs are not valid Suno workspace sources.")
+            raise InvalidSourceError(
+                "Clip URLs are not valid Suno workspace sources."
+            ) from None
 
         query = parse_qs(parsed.query)
         for key in _WORKSPACE_KEYS:
@@ -40,22 +46,29 @@ def canonicalize_suno_identifier(value: str) -> tuple[str, str | None]:
             if len(values) > 1:
                 raise InvalidSourceError(
                     f'Ambiguous Suno workspace URL contains multiple "{key}" values.'
-                )
+                ) from None
             if values:
                 workspace_id = _parse_uuid(values[0])
                 return workspace_id, f"https://suno.com/create?wid={workspace_id}"
 
         parts = [part for part in parsed.path.split("/") if part]
         if parsed.path.rstrip("/") == "/create":
-            raise InvalidSourceError("Suno workspace URL is missing the wid query parameter.")
+            raise InvalidSourceError(
+                "Suno workspace URL is missing the wid query parameter."
+            ) from None
         for part in reversed(parts):
             try:
                 workspace_id = _parse_uuid(part)
             except InvalidSourceError:
                 continue
-            if any(marker in parts for marker in ("workspace", "workspaces", "project", "projects")):
+            if any(
+                marker in parts
+                for marker in ("workspace", "workspaces", "project", "projects")
+            ):
                 return workspace_id, f"https://suno.com/create?wid={workspace_id}"
-        raise InvalidSourceError(f'Could not derive a Suno workspace ID from "{value}".')
+        raise InvalidSourceError(
+            f'Could not derive a Suno workspace ID from "{value}".'
+        ) from None
 
     return workspace_id, f"https://suno.com/create?wid={workspace_id}"
 

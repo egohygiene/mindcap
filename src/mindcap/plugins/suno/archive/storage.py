@@ -9,7 +9,11 @@ from typing import Any
 from mindcap.core.errors import VerificationError
 from mindcap.core.hashing import canonical_content_hash, sha256_bytes
 from mindcap.core.models import CaptureEnvelope, CaptureRequest, StoredBundle
-from mindcap.plugins.suno.archive.layout import bundle_path, safe_relative_path, source_root
+from mindcap.plugins.suno.archive.layout import (
+    bundle_path,
+    safe_relative_path,
+    source_root,
+)
 from mindcap.plugins.suno.archive.manifest import build_manifest
 from mindcap.plugins.suno.archive.verifier import verify_workspace_bundle
 
@@ -48,7 +52,9 @@ class SunoWorkspaceStorageStrategy:
             version = 1
 
         staging = root / f".staging-v{version}"
-        bundle = bundle_path(request.artifact_root, request.provider, source_id, version)
+        bundle = bundle_path(
+            request.artifact_root, request.provider, source_id, version
+        )
         if bundle.exists():
             raise VerificationError(f'Bundle already exists: "{bundle}"')
         if staging.exists():
@@ -86,7 +92,9 @@ class SunoWorkspaceStorageStrategy:
                         "media_type": unit.media_type,
                         "source_url": unit.source_url,
                         "endpoint_category": unit.endpoint_category,
-                        "retrieved_at": unit.retrieved_at.isoformat() if unit.retrieved_at else None,
+                        "retrieved_at": unit.retrieved_at.isoformat()
+                        if unit.retrieved_at
+                        else None,
                         "byte_size": len(unit.body),
                         "safe_metadata": unit.safe_metadata,
                     }
@@ -113,7 +121,9 @@ class SunoWorkspaceStorageStrategy:
                 "schema": "mindcap.suno-capture-report/v0.1",
                 "source_id": source_id,
                 "capture_version": version,
-                "status": "complete_with_warnings" if normalized.get("warnings") else "complete",
+                "status": "complete_with_warnings"
+                if normalized.get("warnings")
+                else "complete",
                 "workspace_id": normalized["workspace_id"],
                 "clip_count": len(normalized.get("clips") or []),
                 "asset_count": len(envelope.assets),
@@ -127,7 +137,9 @@ class SunoWorkspaceStorageStrategy:
             write_text("reports/capture-report.md", transcript)
 
             clip_map = {
-                str(clip["clip_id"]): clip for clip in normalized.get("clips") or [] if clip.get("clip_id")
+                str(clip["clip_id"]): clip
+                for clip in normalized.get("clips") or []
+                if clip.get("clip_id")
             }
             for clip_id, clip in clip_map.items():
                 write_text(
@@ -141,11 +153,18 @@ class SunoWorkspaceStorageStrategy:
                 ]
                 write_text(
                     f"clips/{clip_id}/raw-index.json",
-                    json.dumps({"units": raw_refs}, indent=2, sort_keys=True, ensure_ascii=False),
+                    json.dumps(
+                        {"units": raw_refs},
+                        indent=2,
+                        sort_keys=True,
+                        ensure_ascii=False,
+                    ),
                 )
                 prompts = clip.get("prompts") or {}
                 if prompts.get("prompt"):
-                    write_text(f"clips/{clip_id}/prompts/prompt.txt", f"{prompts['prompt']}\n")
+                    write_text(
+                        f"clips/{clip_id}/prompts/prompt.txt", f"{prompts['prompt']}\n"
+                    )
                 if prompts.get("lyrics_prompt"):
                     write_text(
                         f"clips/{clip_id}/prompts/lyrics-prompt.txt",
@@ -164,12 +183,21 @@ class SunoWorkspaceStorageStrategy:
                     )
                 lyrics = clip.get("lyrics") or {}
                 if lyrics.get("plain"):
-                    write_text(f"clips/{clip_id}/lyrics/lyrics.txt", f"{lyrics['plain']}\n")
-                    write_text(f"clips/{clip_id}/lyrics/lyrics.md", f"{lyrics['plain']}\n")
+                    write_text(
+                        f"clips/{clip_id}/lyrics/lyrics.txt", f"{lyrics['plain']}\n"
+                    )
+                    write_text(
+                        f"clips/{clip_id}/lyrics/lyrics.md", f"{lyrics['plain']}\n"
+                    )
                 if lyrics.get("aligned_words"):
                     write_text(
                         f"clips/{clip_id}/lyrics/aligned.json",
-                        json.dumps(lyrics["aligned_words"], indent=2, sort_keys=True, ensure_ascii=False),
+                        json.dumps(
+                            lyrics["aligned_words"],
+                            indent=2,
+                            sort_keys=True,
+                            ensure_ascii=False,
+                        ),
                     )
 
             for asset in envelope.assets:
@@ -185,7 +213,10 @@ class SunoWorkspaceStorageStrategy:
                 asset_count=len(envelope.assets),
                 captured_at=envelope.captured_at.isoformat(),
             )
-            write_text("checksums.json", json.dumps({"files": checksums}, indent=2, sort_keys=True))
+            write_text(
+                "checksums.json",
+                json.dumps({"files": checksums}, indent=2, sort_keys=True),
+            )
             write_text("manifest.json", json.dumps(manifest, indent=2, sort_keys=True))
             staging.replace(bundle)
         except Exception:
@@ -212,7 +243,9 @@ class SunoWorkspaceStorageStrategy:
                 "previous_version": previous_version,
             }
         )
-        history_path.write_text(json.dumps(history, indent=2, sort_keys=True), encoding="utf-8")
+        history_path.write_text(
+            json.dumps(history, indent=2, sort_keys=True), encoding="utf-8"
+        )
         latest_path.write_text(
             json.dumps(
                 {
