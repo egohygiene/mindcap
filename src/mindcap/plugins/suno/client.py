@@ -189,6 +189,7 @@ class SunoClient:
         method: str,
         path: str,
         *,
+        params: dict[str, Any] | None = None,
         json_body: object | None = None,
         expected_statuses: set[int] | None = None,
         retry_on_auth: bool = True,
@@ -198,6 +199,7 @@ class SunoClient:
         response = self._client.request(
             method,
             path,
+            params=params,
             json=json_body,
             headers=headers,
         )
@@ -210,6 +212,7 @@ class SunoClient:
             return self._request(
                 method,
                 path,
+                params=params,
                 json_body=json_body,
                 expected_statuses=expected_statuses,
                 retry_on_auth=False,
@@ -224,9 +227,13 @@ class SunoClient:
         return response
 
     def get_json(
-        self, path: str, *, category: str
+        self,
+        path: str,
+        *,
+        category: str,
+        params: dict[str, Any] | None = None,
     ) -> tuple[dict[str, Any], SunoResponseRecord]:
-        response = self._request("GET", path)
+        response = self._request("GET", path, params=params)
         body = response.content
         payload = response.json()
         if not isinstance(payload, dict):
@@ -246,8 +253,9 @@ class SunoClient:
         path: str,
         *,
         category: str,
+        params: dict[str, Any] | None = None,
     ) -> tuple[dict[str, Any], SunoResponseRecord] | None:
-        response = self._request("GET", path, expected_statuses={404})
+        response = self._request("GET", path, params=params, expected_statuses={404})
         if response.status_code == 404:
             return None
         body = response.content
@@ -293,12 +301,14 @@ class SunoClient:
     def get_workspace(
         self, workspace_id: str
     ) -> tuple[dict[str, Any], SunoResponseRecord]:
+        # Production Studio API is the primary candidate; legacy paths are fallbacks.
         for path in (
+            f"/api/project/{workspace_id}",
+            f"/api/project/{workspace_id}/",
+            f"/api/projects/{workspace_id}",
             f"/api/workspaces/{workspace_id}",
             f"/api/workspaces/{workspace_id}/",
             f"/api/workspace/{workspace_id}",
-            f"/api/projects/{workspace_id}",
-            f"/api/project/{workspace_id}",
         ):
             result = self.try_get_json(path, category="workspace")
             if result is not None:
@@ -306,6 +316,66 @@ class SunoClient:
         raise CaptureFailedError(
             "Could not resolve the Suno workspace through known API routes."
         )
+
+    def get_project_pages(
+        self,
+        project_id: str,
+    ) -> list[tuple[dict[str, Any], SunoResponseRecord]]:
+        """Fetch all pages of a project, accumulating clips until complete.
+
+        Uses ``clip_count`` from the first response to know when to stop.
+        Detects and breaks out of repeated pages or empty pages to prevent
+        infinite loops.
+        """
+        pages: list[tuple[dict[str, Any], SunoResponseRecord]] = []
+        seen_page_numbers: set[int] = set()
+        accumulated_clip_ids: set[str] = set()
+        expected_count: int | None = None
+        page_num = 1
+
+        while True:
+            params = {"page": page_num} if page_num > 1 else None
+            result = self.try_get_json(
+                f"/api/project/{project_id}",
+                category="project-page",
+                params=params,
+            )
+            if result is None:
+                break
+
+            payload, record = result
+            pages.append((payload, record))
+
+            if expected_count is None:
+                raw = payload.get("clip_count")
+                if isinstance(raw, int):
+                    expected_count = raw
+
+            current_page = payload.get("current_page")
+            if isinstance(current_page, int):
+                if current_page in seen_page_numbers:
+                    break
+                seen_page_numbers.add(current_page)
+
+            project_clips = payload.get("project_clips")
+            if not isinstance(project_clips, list) or not project_clips:
+                break
+
+            for entry in project_clips:
+                if isinstance(entry, dict):
+                    clip = entry.get("clip")
+                    if isinstance(clip, dict) and clip.get("id"):
+                        accumulated_clip_ids.add(str(clip["id"]))
+
+            if (
+                expected_count is not None
+                and len(accumulated_clip_ids) >= expected_count
+            ):
+                break
+
+            page_num += 1
+
+        return pages
 
     def list_workspace_clips(
         self,
