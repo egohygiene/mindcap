@@ -19,6 +19,7 @@ class CaptureRequest(BaseModel):
     artifact_root: Path
     wait_seconds: float = Field(default=10.0, ge=1.0, le=120.0)
     sensitivity: Literal["public", "normal", "sensitive", "restricted"] = "sensitive"
+    options: dict[str, Any] = Field(default_factory=dict)
 
 
 class RawResponseUnit(BaseModel):
@@ -27,6 +28,36 @@ class RawResponseUnit(BaseModel):
     media_type: str
     body: bytes
     source_url: str | None = None
+    endpoint_category: str | None = None
+    retrieved_at: datetime | None = None
+    safe_metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class CapturedAsset(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    asset_id: str
+    workspace_id: str
+    clip_id: str | None = None
+    asset_type: str
+    media_type: str
+    source_url: str | None = None
+    relative_path: str
+    temporary_path: Path
+    byte_size: int | None = None
+    checksum_algorithm: str = "sha256"
+    checksum: str | None = None
+    capture_status: Literal[
+        "downloaded",
+        "verified",
+        "skipped",
+        "failed",
+        "missing",
+    ] = "downloaded"
+    downloaded_at: datetime | None = None
+    http_metadata: dict[str, Any] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
 
 
 class CaptureEnvelope(BaseModel):
@@ -39,6 +70,7 @@ class CaptureEnvelope(BaseModel):
     captured_at: datetime
     strategy: str
     response_units: list[RawResponseUnit]
+    assets: list[CapturedAsset] = Field(default_factory=list)
     safe_metadata: dict[str, Any] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
 

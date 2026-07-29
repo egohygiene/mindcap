@@ -13,6 +13,7 @@ from mindcap.plugins.chatgpt.normalizer import normalize_chatgpt
 from mindcap.plugins.chatgpt.renderer import render_chatgpt_markdown
 from mindcap.plugins.chatgpt.strategies.browser import BrowserCaptureStrategy
 from mindcap.plugins.chatgpt.strategies.saved_json import SavedJsonCaptureStrategy
+from mindcap.storage.filesystem import FilesystemStorageStrategy
 
 
 class ChatGPTPlugin:
@@ -23,6 +24,12 @@ class ChatGPTPlugin:
 
     def canonicalize(self, value: str) -> tuple[str, str | None]:
         return canonicalize_chatgpt_identifier(value)
+
+    def default_strategy(self) -> str:
+        return "browser"
+
+    def strategies(self) -> tuple[str, ...]:
+        return ("browser", "saved-json")
 
     def strategy(self, name: str) -> CaptureStrategy:
         strategies: dict[str, CaptureStrategy] = {
@@ -44,3 +51,6 @@ class ChatGPTPlugin:
 
     def render(self, normalized: dict[str, Any]) -> str:
         return render_chatgpt_markdown(normalized)
+
+    def storage(self) -> FilesystemStorageStrategy:
+        return FilesystemStorageStrategy()
