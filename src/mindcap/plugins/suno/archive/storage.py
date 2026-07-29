@@ -229,12 +229,21 @@ class SunoWorkspaceStorageStrategy:
                 with suppress(OSError):
                     asset.temporary_path.parent.rmdir()
 
-        history = (
+        loaded_history = (
             json.loads(history_path.read_text(encoding="utf-8"))
             if history_path.exists()
+            else None
+        )
+        history: dict[str, Any] = (
+            loaded_history
+            if isinstance(loaded_history, dict)
             else {"source_id": source_id, "versions": []}
         )
-        history.setdefault("versions", []).append(
+        versions = history.get("versions")
+        if not isinstance(versions, list):
+            versions = []
+            history["versions"] = versions
+        versions.append(
             {
                 "version": version,
                 "bundle_path": f"v{version}",

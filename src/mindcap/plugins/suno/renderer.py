@@ -4,8 +4,10 @@ from __future__ import annotations
 def render_suno_markdown(normalized: dict[str, object]) -> str:
     title = str(normalized.get("title") or "Untitled Suno Workspace")
     workspace_id = str(normalized["workspace_id"])
-    clips = list(normalized.get("clips") or [])
-    warnings = list(normalized.get("warnings") or [])
+    clips_value = normalized.get("clips")
+    clips = clips_value if isinstance(clips_value, list) else []
+    warnings_value = normalized.get("warnings")
+    warnings = warnings_value if isinstance(warnings_value, list) else []
 
     lines = [
         "---",

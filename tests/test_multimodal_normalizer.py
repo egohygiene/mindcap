@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from mindcap.core.models import CaptureEnvelope, RawResponseUnit
 from mindcap.plugins.chatgpt.normalizer import normalize_chatgpt
@@ -41,7 +42,7 @@ def _make_envelope(body: bytes) -> CaptureEnvelope:
     )
 
 
-def _normalize() -> dict:
+def _normalize() -> dict[str, Any]:
     return normalize_chatgpt(_make_envelope(FIXTURE.read_bytes()), IDENTIFIER)
 
 
@@ -267,8 +268,9 @@ def test_attachment_record_fields() -> None:
 def test_attachment_warnings_not_empty() -> None:
     normalized = _normalize()
     assert len(normalized["attachment_warnings"]) == 1
-    assert "file_0000000091e071fd974af51a1240f6e2" in (
-        normalized["attachment_warnings"][0]
+    assert (
+        "file_0000000091e071fd974af51a1240f6e2"
+        in (normalized["attachment_warnings"][0])
     )
 
 
@@ -289,8 +291,7 @@ def test_all_messages_have_classification_fields() -> None:
     }
     for msg_id, msg in normalized["messages"].items():
         assert required.issubset(msg.keys()), (
-            f"Missing classification fields on {msg_id}: "
-            f"{required - msg.keys()}"
+            f"Missing classification fields on {msg_id}: {required - msg.keys()}"
         )
 
 

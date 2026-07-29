@@ -287,9 +287,7 @@ def _content_parts(
                 if "://" in asset_pointer:
                     attachment_id = asset_pointer.split("://", 1)[1] or None
                 meta = (
-                    attachments_meta.get(attachment_id or "")
-                    if attachment_id
-                    else {}
+                    attachments_meta.get(attachment_id or "") if attachment_id else {}
                 )
                 mime_type: str | None = (meta or {}).get("mime_type")
 
@@ -302,9 +300,7 @@ def _content_parts(
                         "attachment_id": attachment_id,
                         "filename": (meta or {}).get("name"),
                         "provider_metadata": {
-                            k: v
-                            for k, v in raw_part.items()
-                            if k != "content_type"
+                            k: v for k, v in raw_part.items() if k != "content_type"
                         },
                     }
                 )

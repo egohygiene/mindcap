@@ -20,6 +20,14 @@ def _workspace_payload(envelope: CaptureEnvelope) -> dict[str, Any]:
     return {}
 
 
+def _object_dict(value: object) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _object_list(value: object) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
 def _clip_payloads(
     envelope: CaptureEnvelope,
 ) -> tuple[
@@ -33,7 +41,7 @@ def _clip_payloads(
         if payload is None:
             continue
         if unit.endpoint_category in {"workspace", "clips-page"}:
-            for clip in payload.get("clips", []):
+            for clip in _object_list(payload.get("clips")):
                 if isinstance(clip, dict) and clip.get("id"):
                     clips[str(clip["id"])] = {**clips.get(str(clip["id"]), {}), **clip}
         elif unit.endpoint_category == "clip" and payload.get("id"):
@@ -55,11 +63,9 @@ def normalize_suno(
     clips, lyric_payloads, aligned_payloads = _clip_payloads(envelope)
     normalized_clips: list[dict[str, Any]] = []
     for clip_id, clip in sorted(clips.items()):
-        metadata = (
-            clip.get("metadata") if isinstance(clip.get("metadata"), dict) else {}
-        )
-        lyrics_payload = lyric_payloads.get(clip_id) or {}
-        aligned_payload = aligned_payloads.get(clip_id) or {}
+        metadata = _object_dict(clip.get("metadata"))
+        lyrics_payload = _object_dict(lyric_payloads.get(clip_id))
+        aligned_payload = _object_dict(aligned_payloads.get(clip_id))
         normalized_clips.append(
             {
                 "clip_id": clip_id,
@@ -75,14 +81,14 @@ def normalize_suno(
                 "model": clip.get("model_name")
                 or metadata.get("model")
                 or metadata.get("model_name"),
-                "tags": metadata.get("tags") or clip.get("tags") or [],
+                "tags": _object_list(metadata.get("tags") or clip.get("tags")),
                 "instrumental": metadata.get("make_instrumental")
                 or clip.get("instrumental"),
                 "lyrics": {
                     "plain": lyrics_payload.get("text")
                     or metadata.get("lyrics")
                     or clip.get("lyrics"),
-                    "aligned_words": aligned_payload.get("aligned_words") or [],
+                    "aligned_words": _object_list(aligned_payload.get("aligned_words")),
                 },
                 "prompts": {
                     "prompt": metadata.get("prompt") or clip.get("prompt"),
@@ -90,7 +96,7 @@ def normalize_suno(
                     or clip.get("lyrics_prompt"),
                     "style_prompt": metadata.get("style_prompt")
                     or clip.get("style_prompt"),
-                    "excluded_styles": metadata.get("excluded_styles") or [],
+                    "excluded_styles": _object_list(metadata.get("excluded_styles")),
                 },
                 "audio_url": clip.get("audio_url"),
                 "video_url": clip.get("video_url"),

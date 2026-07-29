@@ -9,6 +9,14 @@ from mindcap.plugins.suno.archive.downloader import SunoAssetDownloader
 from mindcap.plugins.suno.client import SunoClient
 
 
+def _object_dict(value: object) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _object_list(value: object) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
 class SunoWorkspaceCaptureService:
     def __init__(
         self,
@@ -21,9 +29,7 @@ class SunoWorkspaceCaptureService:
     def _asset_candidates(
         self, clip: dict[str, Any], options: dict[str, Any]
     ) -> list[tuple[str, str, str, str]]:
-        metadata = (
-            clip.get("metadata") if isinstance(clip.get("metadata"), dict) else {}
-        )
+        metadata = _object_dict(clip.get("metadata"))
         clip_id = str(clip.get("id") or "")
         candidates: list[tuple[str, str, str, str]] = []
         audio_url = clip.get("audio_url") or metadata.get("audio_url")
@@ -81,7 +87,7 @@ class SunoWorkspaceCaptureService:
         response_units.append(workspace_record.to_raw_response_unit("workspace-000", 0))
 
         clips_by_id: dict[str, dict[str, Any]] = {}
-        for clip in workspace.get("clips", []):
+        for clip in _object_list(workspace.get("clips")):
             if isinstance(clip, dict) and clip.get("id"):
                 clips_by_id[str(clip["id"])] = dict(clip)
 
@@ -93,7 +99,7 @@ class SunoWorkspaceCaptureService:
                     f"clips-page-{index:03d}", len(response_units)
                 )
             )
-            for clip in page.get("clips", []):
+            for clip in _object_list(page.get("clips")):
                 if isinstance(clip, dict) and clip.get("id"):
                     clips_by_id[str(clip["id"])] = {
                         **clips_by_id.get(str(clip["id"]), {}),
