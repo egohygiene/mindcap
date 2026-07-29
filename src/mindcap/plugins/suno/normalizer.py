@@ -102,8 +102,16 @@ def _normalize_clip(
     project_clip_meta = _object_dict(clip.get("_project_clip"))
 
     # Prompt fields: preserve both prompt and tags; tags may carry the real prompt.
-    prompt = metadata.get("prompt") if metadata.get("prompt") is not None else clip.get("prompt")
-    tags_raw = metadata.get("tags") if metadata.get("tags") is not None else clip.get("tags")
+    prompt = (
+        metadata.get("prompt")
+        if metadata.get("prompt") is not None
+        else clip.get("prompt")
+    )
+    tags_raw = (
+        metadata.get("tags")
+        if metadata.get("tags") is not None
+        else clip.get("tags")
+    )
     display_tags_raw = (
         metadata.get("display_tags")
         or clip.get("display_tags")
@@ -150,7 +158,11 @@ def _normalize_clip(
         "duration": clip.get("duration") or metadata.get("duration"),
         "bpm": metadata.get("bpm") or metadata.get("avg_bpm") or clip.get("bpm"),
         "model": {
-            "name": clip.get("model_name") or metadata.get("model_name") or metadata.get("model"),
+            "name": (
+                clip.get("model_name")
+                or metadata.get("model_name")
+                or metadata.get("model")
+            ),
             "major_version": clip.get("major_model_version"),
             "uses_latest": clip.get("uses_latest_model"),
         },
@@ -173,7 +185,9 @@ def _normalize_clip(
             "audio_url": clip.get("audio_url"),
             "video_url": clip.get("video_url"),
             "image_url": clip.get("image_url"),
-            "image_large_url": clip.get("image_large_url") or metadata.get("image_large_url"),
+            "image_large_url": (
+                clip.get("image_large_url") or metadata.get("image_large_url")
+            ),
             "media_urls": _object_list(clip.get("media_urls")),
         },
         "generation_flags": generation_flags,
@@ -203,7 +217,9 @@ def _normalize_clip(
         "audio_url": clip.get("audio_url"),
         "video_url": clip.get("video_url"),
         "image_url": clip.get("image_url"),
-        "image_large_url": clip.get("image_large_url") or metadata.get("image_large_url"),
+        "image_large_url": (
+            clip.get("image_large_url") or metadata.get("image_large_url")
+        ),
         "parent_id": clip.get("parent_id") or metadata.get("parent_id"),
         "source_id": clip.get("source_id") or metadata.get("source_id"),
         "tags": _coerce_tags(tags_raw),

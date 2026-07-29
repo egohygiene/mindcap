@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-import pytest
 
 from mindcap.config import suno_api_origin
 from mindcap.core.models import CaptureEnvelope, RawResponseUnit
@@ -22,7 +21,7 @@ from mindcap.plugins.suno.archive.service import (
 )
 from mindcap.plugins.suno.auth import SunoAuthState
 from mindcap.plugins.suno.client import SunoClient
-from mindcap.plugins.suno.normalizer import normalize_suno, _coerce_tags
+from mindcap.plugins.suno.normalizer import _coerce_tags, normalize_suno
 
 PROJECT_FIXTURE = Path(__file__).parent / "fixtures" / "suno" / "project.json"
 PROJECT_ID = "proj-a1b2c3d4-0000-0000-0000-000000000001"
@@ -36,7 +35,6 @@ _CAPTURED_AT = datetime(2025, 3, 15, tzinfo=UTC)
 
 def _state() -> SunoAuthState:
     import base64
-
     from datetime import timedelta
 
     def _encode_json(value: dict[str, Any]) -> str:
@@ -562,8 +560,8 @@ def test_duplicate_clip_ids_across_pages_are_deduplicated_in_normalizer() -> Non
 
 
 def test_incomplete_capture_detected_by_service(tmp_path: Path) -> None:
-    from mindcap.plugins.suno.archive.downloader import SunoAssetDownloader
     from mindcap.core.models import CaptureRequest
+    from mindcap.plugins.suno.archive.downloader import SunoAssetDownloader
 
     # Build a project response that claims 3 clips but only contains 1.
     project = {
@@ -617,8 +615,8 @@ def test_incomplete_capture_detected_by_service(tmp_path: Path) -> None:
 
 
 def test_complete_capture_has_no_incomplete_warning(tmp_path: Path) -> None:
-    from mindcap.plugins.suno.archive.downloader import SunoAssetDownloader
     from mindcap.core.models import CaptureRequest
+    from mindcap.plugins.suno.archive.downloader import SunoAssetDownloader
 
     project = json.loads(PROJECT_FIXTURE.read_text(encoding="utf-8"))
 

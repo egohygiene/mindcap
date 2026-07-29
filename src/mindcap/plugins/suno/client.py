@@ -344,8 +344,6 @@ class SunoClient:
                 break
 
             payload, record = result
-            pages.append((payload, record))
-
             if expected_count is None:
                 raw = payload.get("clip_count")
                 if isinstance(raw, int):
@@ -356,6 +354,8 @@ class SunoClient:
                 if current_page in seen_page_numbers:
                     break
                 seen_page_numbers.add(current_page)
+
+            pages.append((payload, record))
 
             project_clips = payload.get("project_clips")
             if not isinstance(project_clips, list) or not project_clips:
