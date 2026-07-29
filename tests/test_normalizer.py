@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from mindcap.core.models import CaptureEnvelope, RawResponseUnit
 from mindcap.plugins.chatgpt.normalizer import (
@@ -37,7 +38,7 @@ def _make_envelope(body: bytes) -> CaptureEnvelope:
     )
 
 
-def _normalize() -> dict:
+def _normalize() -> dict[str, Any]:
     return normalize_chatgpt(_make_envelope(FIXTURE.read_bytes()), IDENTIFIER)
 
 
@@ -117,7 +118,7 @@ def test_branch_index_sibling_indices_are_zero_based() -> None:
 
 def test_branch_index_linear_conversation() -> None:
     """A conversation with no branching produces exactly one branch."""
-    mapping = {
+    mapping: dict[str, dict[str, object]] = {
         "m-0": {"id": "m-0", "parent": None, "children": ["m-1"], "message": None},
         "m-1": {"id": "m-1", "parent": "m-0", "children": [], "message": None},
     }
@@ -131,7 +132,7 @@ def test_branch_index_linear_conversation() -> None:
 
 
 def test_branch_index_no_selected_path_gives_null_is_selected() -> None:
-    mapping = {
+    mapping: dict[str, dict[str, object]] = {
         "m-0": {"id": "m-0", "parent": None, "children": [], "message": None},
     }
     result = _compute_branch_index(mapping, ["m-0"], [])
@@ -140,7 +141,7 @@ def test_branch_index_no_selected_path_gives_null_is_selected() -> None:
 
 def test_branch_index_cycle_does_not_hang() -> None:
     """A cycle in the mapping must not cause an infinite loop."""
-    mapping = {
+    mapping: dict[str, dict[str, object]] = {
         "m-0": {"id": "m-0", "parent": None, "children": ["m-1"], "message": None},
         "m-1": {"id": "m-1", "parent": "m-0", "children": ["m-0"], "message": None},
     }

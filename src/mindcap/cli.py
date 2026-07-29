@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import platform
 import subprocess
+import sys
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 from rich.console import Console
@@ -26,8 +27,10 @@ from mindcap.plugins.chatgpt.strategies.browser import (
     browser_capture_architecture,
     verify_chatgpt_authentication,
 )
+from mindcap.plugins.suno.auth import authenticate_suno_cookie_stdin
+from mindcap.plugins.suno.doctor import doctor_suno as run_suno_doctor
 from mindcap.registry import build_registry
-from mindcap.storage.filesystem import FilesystemStorageStrategy
+from mindcap.storage import verify_bundle
 
 app = typer.Typer(
     name="mindcap",
@@ -78,14 +81,16 @@ def _fail(error: Exception) -> None:
 def _capture(
     source_type: str,
     source: str,
-    strategy_name: str,
+    strategy_name: str | None,
     output: Path | None,
     wait_seconds: float,
+    options: dict[str, Any],
     identifier_override: str | None = None,
 ) -> None:
     try:
         registry = build_registry()
         plugin = registry.get(source_type)
+        selected_strategy = strategy_name or plugin.default_strategy()
         identifier_source = identifier_override or source
         identifier, canonical_url = plugin.canonicalize(identifier_source)
         request = CaptureRequest(
@@ -94,21 +99,32 @@ def _capture(
             provider=source_type,
             canonical_identifier=identifier,
             canonical_url=canonical_url,
-            strategy=strategy_name,
+            strategy=selected_strategy,
             artifact_root=(output or default_artifact_root()).resolve(),
             wait_seconds=wait_seconds,
+            options=options,
         )
-        envelope = plugin.strategy(strategy_name).capture(request)
+        envelope = plugin.strategy(selected_strategy).capture(request)
         normalized = plugin.normalize(envelope, identifier)
         transcript = plugin.render(normalized)
-        stored = FilesystemStorageStrategy().persist(
-            request, envelope, normalized, transcript
-        )
-        console.print(
-            f"[bold green]{stored.status.title()}[/bold green] "
-            f"[cyan]{stored.source_id}[/cyan] version {stored.version}"
-        )
-        console.print(str(stored.path))
+        stored = plugin.storage().persist(request, envelope, normalized, transcript)
+        if options.get("json"):
+            console.print_json(
+                data={
+                    "status": stored.status,
+                    "source_id": stored.source_id,
+                    "version": stored.version,
+                    "path": str(stored.path),
+                }
+            )
+        elif options.get("quiet"):
+            console.print(str(stored.path))
+        else:
+            console.print(
+                f"[bold green]{stored.status.title()}[/bold green] "
+                f"[cyan]{stored.source_id}[/cyan] version {stored.version}"
+            )
+            console.print(str(stored.path))
     except (MindcapError, OSError, ValueError, json.JSONDecodeError) as error:
         _fail(error)
 
@@ -123,13 +139,33 @@ def auth_chatgpt() -> None:
         _fail(error)
 
 
+@auth_app.command("suno")
+def auth_suno(
+    cookie_stdin: Annotated[
+        bool,
+        typer.Option(
+            "--cookie-stdin",
+            help="Read the Clerk __client cookie or Cookie header from stdin.",
+        ),
+    ] = False,
+) -> None:
+    """Store Suno authentication state outside the repository."""
+    if not cookie_stdin:
+        _fail(ValueError("Pass --cookie-stdin and pipe the cookie value over stdin."))
+    try:
+        authenticate_suno_cookie_stdin(sys.stdin.read())
+        console.print("[bold green]Suno authentication state saved.[/bold green]")
+    except Exception as error:
+        _fail(error)
+
+
 @app.command()
 def capture(
     source_type: Annotated[str, typer.Argument(help="Registered source plugin.")],
     source: Annotated[str, typer.Argument(help="Source URL or identifier.")],
     strategy: Annotated[
-        str, typer.Option("--strategy", help="Acquisition strategy.")
-    ] = "browser",
+        str | None, typer.Option("--strategy", help="Acquisition strategy.")
+    ] = None,
     output: Annotated[
         Path | None, typer.Option("--output", help="Private artifact root.")
     ] = None,
@@ -137,9 +173,57 @@ def capture(
         float,
         typer.Option("--wait-seconds", min=1.0, max=120.0),
     ] = 10.0,
+    audio_format: Annotated[
+        str,
+        typer.Option("--audio-format", help="Preferred Suno audio format."),
+    ] = "mp3",
+    include_video: Annotated[
+        bool,
+        typer.Option("--include-video/--no-include-video"),
+    ] = True,
+    request_wav: Annotated[
+        bool,
+        typer.Option("--request-wav", help="Request WAV metadata when supported."),
+    ] = False,
+    include_stems: Annotated[
+        bool,
+        typer.Option("--include-stems", help="Request stem metadata when supported."),
+    ] = False,
+    concurrency: Annotated[
+        int,
+        typer.Option("--concurrency", min=1, max=16),
+    ] = 4,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Force a new archive version."),
+    ] = False,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit machine-readable capture output."),
+    ] = False,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", help="Print only the resulting bundle path."),
+    ] = False,
 ) -> None:
     """Capture a source through a registered plugin and strategy."""
-    _capture(source_type, source, strategy, output, wait_seconds)
+    _capture(
+        source_type,
+        source,
+        strategy,
+        output,
+        wait_seconds,
+        {
+            "audio_format": audio_format,
+            "include_video": include_video,
+            "request_wav": request_wav,
+            "include_stems": include_stems,
+            "concurrency": concurrency,
+            "force": force,
+            "json": json_output,
+            "quiet": quiet,
+        },
+    )
 
 
 @app.command("import")
@@ -174,6 +258,7 @@ def import_source(
         "saved-json",
         output,
         10.0,
+        {},
         identifier_override=identifier,
     )
 
@@ -184,7 +269,7 @@ def verify(
 ) -> None:
     """Verify stored artifact hashes and required files."""
     try:
-        FilesystemStorageStrategy().verify(bundle_path.expanduser().resolve())
+        verify_bundle(bundle_path.expanduser().resolve())
         console.print("[bold green]Bundle verification passed.[/bold green]")
     except (MindcapError, OSError, KeyError, TypeError) as error:
         _fail(error)
@@ -196,8 +281,8 @@ def list_plugins() -> None:
     table = Table("Source plugin", "Initial strategies")
     registry = build_registry()
     for name in registry.names():
-        strategies = "browser, saved-json" if name == "chatgpt" else ""
-        table.add_row(name, strategies)
+        plugin = registry.get(name)
+        table.add_row(name, ", ".join(plugin.strategies()))
     console.print(table)
 
 
@@ -290,3 +375,14 @@ def doctor_chatgpt(
             str(default_artifact_root()),
         )
         console.print(detail_table)
+
+
+@doctor_app.command("suno")
+def doctor_suno(
+    verbose: Annotated[bool, typer.Option("--verbose")] = False,
+) -> None:
+    """Print privacy-safe Suno authentication and API diagnostics."""
+    try:
+        run_suno_doctor(console, verbose=verbose)
+    except Exception as error:
+        _fail(error)

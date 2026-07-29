@@ -58,9 +58,9 @@ def render_chatgpt_markdown(normalized: dict[str, Any]) -> str:
     source_id = normalized["source_id"]
     messages = normalized["messages"]
     # Prefer the explicit visible path; fall back to the legacy selected_path.
-    visible_path = normalized.get("visible_selected_path") or normalized.get(
-        "selected_path"
-    ) or []
+    visible_path = (
+        normalized.get("visible_selected_path") or normalized.get("selected_path") or []
+    )
 
     lines = [
         "---",
@@ -82,9 +82,7 @@ def render_chatgpt_markdown(normalized: dict[str, Any]) -> str:
         if message and message.get("renderable") is not False:
             parts = message.get("content") or []
             # Skip messages with no renderable content (e.g. empty strings).
-            has_content = any(
-                (p.get("value") or p.get("attachment_id")) for p in parts
-            )
+            has_content = any((p.get("value") or p.get("attachment_id")) for p in parts)
             if has_content or not parts:
                 lines.append(_render_message(message))
                 rendered.add(message_id)

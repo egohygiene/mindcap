@@ -23,11 +23,29 @@ def default_artifact_root() -> Path:
     return find_repository_root() / ".cache" / "mindcap"
 
 
+def config_dir() -> Path:
+    configured = os.environ.get("MINDCAP_CONFIG_DIR")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return user_data_path("mindcap", "Ego Hygiene")
+
+
 def chatgpt_profile_dir() -> Path:
     configured = os.environ.get("MINDCAP_CHATGPT_PROFILE_DIR")
     if configured:
         return Path(configured).expanduser().resolve()
-    return user_data_path("mindcap", "Ego Hygiene") / "browser" / "chatgpt"
+    return config_dir() / "browser" / "chatgpt"
+
+
+def suno_auth_file() -> Path:
+    configured = os.environ.get("MINDCAP_SUNO_AUTH_FILE")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return config_dir() / "auth" / "suno.json"
+
+
+def suno_api_origin() -> str:
+    return os.environ.get("MINDCAP_SUNO_API_ORIGIN", "https://suno.com").rstrip("/")
 
 
 def ensure_private_directory(path: Path) -> Path:
