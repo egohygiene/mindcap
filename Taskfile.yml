@@ -216,3 +216,80 @@ tasks:
         fi
         uv run mindcap inspect suno "{{.CLI_ARGS}}"
     silent: false
+
+  # ── DistroKid-specific tasks ────────────────────────────────────────────────
+
+  distrokid:auth:
+    desc: >-
+      Authenticate the dedicated DistroKid browser profile with stable Chrome.
+    cmds:
+      - uv run mindcap auth distrokid
+    silent: false
+
+  distrokid:doctor:
+    desc: Run safe DistroKid authentication and browser diagnostics.
+    cmds:
+      - uv run mindcap doctor distrokid
+    silent: false
+
+  distrokid:capture:
+    desc: >-
+      Capture a DistroKid library or release source via browser strategy.
+      Usage: task distrokid:capture -- "<mymusic-url|album-url|album-uuid>"
+    cmds:
+      - |
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          printf '%s\n' "Usage: task distrokid:capture -- \"<mymusic-url|album-url|album-uuid>\""
+          printf '%s\n' "Example: task distrokid:capture -- \"https://distrokid.com/mymusic/\""
+          printf '%s\n' "Example: task distrokid:capture -- \"https://distrokid.com/dashboard/album/?albumuuid=642BAA93-568F-47A7-99558E4426A9D1D0\""
+          exit 1
+        fi
+        uv run mindcap capture distrokid "{{.CLI_ARGS}}" --strategy "browser"
+    silent: false
+
+  distrokid:capture-library:
+    desc: >-
+      Capture the authenticated DistroKid release library index.
+    cmds:
+      - uv run mindcap capture distrokid "https://distrokid.com/mymusic/" --strategy "browser"
+    silent: false
+
+  distrokid:capture-release:
+    desc: >-
+      Capture a single DistroKid release by URL or album UUID.
+      Usage: task distrokid:capture-release -- "<album-url|album-uuid>"
+    cmds:
+      - |
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          printf '%s\n' "Usage: task distrokid:capture-release -- \"<album-url|album-uuid>\""
+          printf '%s\n' "Example: task distrokid:capture-release -- \"642BAA93-568F-47A7-99558E4426A9D1D0\""
+          exit 1
+        fi
+        uv run mindcap capture distrokid "{{.CLI_ARGS}}" --strategy "browser"
+    silent: false
+
+  distrokid:inspect:
+    desc: >-
+      Inspect a captured DistroKid archive bundle.
+      Usage: task distrokid:inspect -- "<bundle-path>"
+    cmds:
+      - |
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          printf '%s\n' "Usage: task distrokid:inspect -- \"<bundle-path>\""
+          exit 1
+        fi
+        uv run mindcap inspect distrokid "{{.CLI_ARGS}}"
+    silent: false
+
+  distrokid:verify:
+    desc: >-
+      Verify the integrity of a captured DistroKid archive bundle.
+      Usage: task distrokid:verify -- "<bundle-path>"
+    cmds:
+      - |
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          printf '%s\n' "Usage: task distrokid:verify -- \"<bundle-path>\""
+          exit 1
+        fi
+        uv run mindcap verify "{{.CLI_ARGS}}"
+    silent: false

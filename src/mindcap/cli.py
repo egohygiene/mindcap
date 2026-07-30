@@ -19,6 +19,7 @@ from mindcap import __version__
 from mindcap.config import (
     chatgpt_profile_dir,
     default_artifact_root,
+    distrokid_profile_dir,
     find_repository_root,
 )
 from mindcap.core.errors import MindcapError
@@ -32,6 +33,8 @@ from mindcap.plugins.chatgpt.strategies.browser import (
     browser_capture_architecture,
     verify_chatgpt_authentication,
 )
+from mindcap.plugins.distrokid.doctor import doctor_distrokid as run_distrokid_doctor
+from mindcap.plugins.distrokid.strategies.browser import authenticate_distrokid
 from mindcap.plugins.suno.auth import authenticate_suno_cookie_stdin
 from mindcap.plugins.suno.doctor import doctor_suno as run_suno_doctor
 from mindcap.registry import build_registry
@@ -272,9 +275,7 @@ def _capture_export(
                 else:
                     imported.append(entry)
                 if verbose:
-                    console.print(
-                        f"  [{stored.status}] {conv_id} → {stored.path.name}"
-                    )
+                    console.print(f"  [{stored.status}] {conv_id} → {stored.path.name}")
             except (MindcapError, OSError, ValueError, json.JSONDecodeError) as exc:
                 failed.append(
                     {
@@ -284,9 +285,7 @@ def _capture_export(
                         "source_file": record.source_file,
                     }
                 )
-                all_warnings.append(
-                    f"Failed to import conversation {conv_id}: {exc}"
-                )
+                all_warnings.append(f"Failed to import conversation {conv_id}: {exc}")
     except (
         UnsupportedExportError,
         UnsupportedConversationSchemaError,
@@ -395,6 +394,16 @@ def auth_suno(
         _fail(error)
 
 
+@auth_app.command("distrokid")
+def auth_distrokid() -> None:
+    """Log into the dedicated persistent DistroKid browser profile."""
+    try:
+        authenticate_distrokid()
+        console.print("[bold green]Dedicated DistroKid profile saved.[/bold green]")
+    except Exception as error:
+        _fail(error)
+
+
 @app.command()
 def capture(
     source_type: Annotated[str, typer.Argument(help="Registered source plugin.")],
@@ -432,6 +441,42 @@ def capture(
         bool,
         typer.Option("--include-stems", help="Request stem metadata when supported."),
     ] = False,
+    include_releases: Annotated[
+        bool,
+        typer.Option(
+            "--include-releases", help="Capture each discovered library release."
+        ),
+    ] = False,
+    include_audio: Annotated[
+        bool,
+        typer.Option("--include-audio/--no-include-audio"),
+    ] = True,
+    require_audio: Annotated[
+        bool,
+        typer.Option(
+            "--require-audio", help="Fail capture when expected audio is unavailable."
+        ),
+    ] = False,
+    include_artwork: Annotated[
+        bool,
+        typer.Option("--include-artwork/--no-include-artwork"),
+    ] = True,
+    include_credits: Annotated[
+        bool,
+        typer.Option(
+            "--include-credits", help="Include read-only release credits capture."
+        ),
+    ] = False,
+    include_lyrics: Annotated[
+        bool,
+        typer.Option(
+            "--include-lyrics", help="Include read-only release lyrics capture."
+        ),
+    ] = False,
+    include_store_links: Annotated[
+        bool,
+        typer.Option("--include-store-links/--no-include-store-links"),
+    ] = True,
     concurrency: Annotated[
         int,
         typer.Option("--concurrency", min=1, max=16),
@@ -455,6 +500,13 @@ def capture(
     debug: Annotated[
         bool,
         typer.Option("--debug", help="Emit low-level diagnostics (no secrets)."),
+    ] = False,
+    debug_discovery: Annotated[
+        bool,
+        typer.Option(
+            "--debug-discovery",
+            help="Emit secret-safe response schema discovery diagnostics.",
+        ),
     ] = False,
 ) -> None:
     """Capture a source through a registered plugin and strategy."""
@@ -484,12 +536,20 @@ def capture(
             "include_video": include_video,
             "request_wav": request_wav,
             "include_stems": include_stems,
+            "include_releases": include_releases,
+            "include_audio": include_audio,
+            "require_audio": require_audio,
+            "include_artwork": include_artwork,
+            "include_credits": include_credits,
+            "include_lyrics": include_lyrics,
+            "include_store_links": include_store_links,
             "concurrency": concurrency,
             "force": force,
             "json": json_output,
             "quiet": quiet,
             "verbose": verbose,
             "debug": debug,
+            "debug_discovery": debug_discovery,
         },
     )
 
@@ -565,6 +625,11 @@ def paths() -> None:
     table.add_row(
         "ChatGPT browser profile",
         str(chatgpt_profile_dir()),
+        "No — contains authentication state",
+    )
+    table.add_row(
+        "DistroKid browser profile",
+        str(distrokid_profile_dir()),
         "No — contains authentication state",
     )
     console.print(table)
@@ -659,6 +724,17 @@ def doctor_suno(
         _fail(error)
 
 
+@doctor_app.command("distrokid")
+def doctor_distrokid(
+    verbose: Annotated[bool, typer.Option("--verbose")] = False,
+) -> None:
+    """Print privacy-safe DistroKid browser diagnostics."""
+    try:
+        run_distrokid_doctor(console, verbose=verbose)
+    except Exception as error:
+        _fail(error)
+
+
 @inspect_app.command("suno")
 def inspect_suno(
     archive: Annotated[Path, typer.Argument(help="Suno workspace bundle directory.")],
@@ -668,6 +744,21 @@ def inspect_suno(
 
     try:
         inspect_suno_archive(archive, console)
+    except (MindcapError, OSError) as error:
+        _fail(error)
+
+
+@inspect_app.command("distrokid")
+def inspect_distrokid(
+    archive: Annotated[
+        Path, typer.Argument(help="DistroKid release/library bundle directory.")
+    ],
+) -> None:
+    """Inspect a captured DistroKid archive."""
+    from mindcap.plugins.distrokid.archive.inspector import inspect_distrokid_archive
+
+    try:
+        inspect_distrokid_archive(archive, console)
     except (MindcapError, OSError) as error:
         _fail(error)
 
@@ -700,31 +791,20 @@ def inspect_chatgpt(
             _fail(error)
             return
         table = Table(
-            title=(
-                "ChatGPT Import - "
-                + str(manifest.get("import_id", "unknown"))
-            )
+            title=("ChatGPT Import - " + str(manifest.get("import_id", "unknown")))
         )
         table.add_column("Field", style="bold")
         table.add_column("Value")
         table.add_row("Import ID", str(manifest.get("import_id", "-")))
         table.add_row("Source", str(manifest.get("source", "-")))
-        table.add_row(
-            "Import timestamp", str(manifest.get("import_timestamp", "-"))
-        )
+        table.add_row("Import timestamp", str(manifest.get("import_timestamp", "-")))
         table.add_row(
             "Conversations discovered",
             str(manifest.get("conversations_discovered", "-")),
         )
-        table.add_row(
-            "Imported", str(manifest.get("conversations_imported", "-"))
-        )
-        table.add_row(
-            "Unchanged", str(manifest.get("conversations_unchanged", "-"))
-        )
-        table.add_row(
-            "Failed", str(manifest.get("conversations_failed", "-"))
-        )
+        table.add_row("Imported", str(manifest.get("conversations_imported", "-")))
+        table.add_row("Unchanged", str(manifest.get("conversations_unchanged", "-")))
+        table.add_row("Failed", str(manifest.get("conversations_failed", "-")))
         table.add_row("Warnings", str(len(manifest.get("warnings") or [])))
         table.add_row("Elapsed", f"{manifest.get('elapsed_seconds', '-')}s")
         console.print(table)
@@ -757,16 +837,12 @@ def inspect_chatgpt(
         conv = bundle_manifest.get("conversation") or {}
         graph_integrity = normalized.get("graph_integrity") or {}
         provider_id = bundle_manifest.get("provider_id", "unknown")
-        table = Table(
-            title=f"ChatGPT Conversation - {provider_id}"
-        )
+        table = Table(title=f"ChatGPT Conversation - {provider_id}")
         table.add_column("Field", style="bold")
         table.add_column("Value")
         raw_title = normalized.get("title") or conv.get("title") or "-"
         table.add_row("Title", str(raw_title))
-        table.add_row(
-            "Provider ID", str(bundle_manifest.get("provider_id", "-"))
-        )
+        table.add_row("Provider ID", str(bundle_manifest.get("provider_id", "-")))
         table.add_row(
             "Capture version",
             str(bundle_manifest.get("capture_version", "-")),
@@ -775,31 +851,17 @@ def inspect_chatgpt(
             "Schema version",
             str(bundle_manifest.get("versions", {}).get("schema", "-")),
         )
-        table.add_row(
-            "Captured at", str(bundle_manifest.get("captured_at", "-"))
-        )
-        table.add_row(
-            "Strategy", str(bundle_manifest.get("strategy", "-"))
-        )
+        table.add_row("Captured at", str(bundle_manifest.get("captured_at", "-")))
+        table.add_row("Strategy", str(bundle_manifest.get("strategy", "-")))
 
         def _conv_or_norm(key: str) -> str:
-            return str(
-                conv.get(key) or normalized.get(key) or "-"
-            )
+            return str(conv.get(key) or normalized.get(key) or "-")
 
         table.add_row("Total nodes", _conv_or_norm("provider_node_count"))
-        table.add_row(
-            "Total messages", _conv_or_norm("provider_message_count")
-        )
-        table.add_row(
-            "Visible messages", _conv_or_norm("visible_message_count")
-        )
-        table.add_row(
-            "Hidden messages", _conv_or_norm("hidden_message_count")
-        )
-        table.add_row(
-            "Structural nodes", _conv_or_norm("structural_node_count")
-        )
+        table.add_row("Total messages", _conv_or_norm("provider_message_count"))
+        table.add_row("Visible messages", _conv_or_norm("visible_message_count"))
+        table.add_row("Hidden messages", _conv_or_norm("hidden_message_count"))
+        table.add_row("Structural nodes", _conv_or_norm("structural_node_count"))
         table.add_row(
             "Attachments",
             str(len(normalized.get("attachments") or [])),

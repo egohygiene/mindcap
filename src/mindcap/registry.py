@@ -28,9 +28,11 @@ class PluginRegistry:
 
 def build_registry() -> PluginRegistry:
     from mindcap.plugins.chatgpt.plugin import ChatGPTPlugin
+    from mindcap.plugins.distrokid.plugin import DistroKidPlugin
     from mindcap.plugins.suno.plugin import SunoPlugin
 
     registry = PluginRegistry()
     registry.register(ChatGPTPlugin())
+    registry.register(DistroKidPlugin())
     registry.register(SunoPlugin())
     return registry
