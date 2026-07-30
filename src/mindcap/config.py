@@ -37,6 +37,13 @@ def chatgpt_profile_dir() -> Path:
     return config_dir() / "browser" / "chatgpt"
 
 
+def distrokid_profile_dir() -> Path:
+    configured = os.environ.get("MINDCAP_DISTROKID_PROFILE_DIR")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return config_dir() / "browser" / "distrokid"
+
+
 def suno_auth_file() -> Path:
     configured = os.environ.get("MINDCAP_SUNO_AUTH_FILE")
     if configured:
