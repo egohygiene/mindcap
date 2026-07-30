@@ -167,8 +167,7 @@ def test_parent_child_disagreement() -> None:
     report = verify_raw_mapping(mapping)
     assert report.complete is False
     assert any(
-        "disagreement" in w.lower() or "parent" in w.lower()
-        for w in report.warnings
+        "disagreement" in w.lower() or "parent" in w.lower() for w in report.warnings
     )
 
 

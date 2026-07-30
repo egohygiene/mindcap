@@ -105,9 +105,7 @@ class ExportCaptureStrategy:
         """
         path = Path(request.source).expanduser().resolve()
         if not path.exists():
-            raise CaptureFailedError(
-                f'Export source does not exist: "{path}"'
-            )
+            raise CaptureFailedError(f'Export source does not exist: "{path}"')
         discovery = self.discover(str(path))
         summary_bytes = json.dumps(
             {
@@ -148,9 +146,7 @@ class ExportCaptureStrategy:
         """Scan the source and return an :class:`ExportDiscovery` summary."""
         path = Path(source).expanduser().resolve()
         if not path.exists():
-            raise UnsupportedExportError(
-                f'Export source does not exist: "{path}"'
-            )
+            raise UnsupportedExportError(f'Export source does not exist: "{path}"')
         if path.suffix.lower() == ".zip":
             return self._discover_zip(path)
         if path.is_dir():
@@ -158,8 +154,7 @@ class ExportCaptureStrategy:
         if path.suffix.lower() == ".json":
             return self._discover_single_json(path)
         raise UnsupportedExportError(
-            f'Unrecognised export source (expected .zip, directory, or '
-            f'.json): "{path}"'
+            f'Unrecognised export source (expected .zip, directory, or .json): "{path}"'
         )
 
     def iter_conversations(
@@ -179,9 +174,7 @@ class ExportCaptureStrategy:
         """
         path = Path(source).expanduser().resolve()
         if not path.exists():
-            raise UnsupportedExportError(
-                f'Export source does not exist: "{path}"'
-            )
+            raise UnsupportedExportError(f'Export source does not exist: "{path}"')
         if path.suffix.lower() == ".zip":
             yield from self._iter_zip(path, conversation_id=conversation_id)
         elif path.is_dir():
@@ -191,9 +184,7 @@ class ExportCaptureStrategy:
                 path, str(path), conversation_id=conversation_id
             )
         else:
-            raise UnsupportedExportError(
-                f'Unrecognised export source: "{path}"'
-            )
+            raise UnsupportedExportError(f'Unrecognised export source: "{path}"')
 
     # ------------------------------------------------------------------
     # ZIP support
@@ -205,9 +196,7 @@ class ExportCaptureStrategy:
             with zipfile.ZipFile(path, "r") as zf:
                 names = zf.namelist()
         except zipfile.BadZipFile as exc:
-            raise MalformedZipError(
-                f'Cannot open export ZIP "{path}": {exc}'
-            ) from exc
+            raise MalformedZipError(f'Cannot open export ZIP "{path}": {exc}') from exc
 
         return _build_discovery(
             source_path=str(path),
@@ -224,9 +213,7 @@ class ExportCaptureStrategy:
         try:
             zf_handle = zipfile.ZipFile(path, "r")
         except zipfile.BadZipFile as exc:
-            raise MalformedZipError(
-                f'Cannot open export ZIP "{path}": {exc}'
-            ) from exc
+            raise MalformedZipError(f'Cannot open export ZIP "{path}": {exc}') from exc
 
         with zf_handle as zf:
             for entry_name in zf.namelist():
@@ -245,11 +232,7 @@ class ExportCaptureStrategy:
     # ------------------------------------------------------------------
 
     def _discover_directory(self, path: Path) -> ExportDiscovery:
-        names = [
-            entry.name
-            for entry in sorted(path.iterdir())
-            if entry.is_file()
-        ]
+        names = [entry.name for entry in sorted(path.iterdir()) if entry.is_file()]
         return _build_discovery(
             source_path=str(path),
             source_sha256=None,
@@ -376,8 +359,8 @@ def _iter_conversations_json(
     elif isinstance(payload, dict):
         raise UnsupportedConversationSchemaError(
             f'Unsupported JSON shape in "{source_file}": expected a conversation '
-            f"array or a single conversation object with a \"mapping\" field. "
-            f"Detected shape: dict without \"mapping\". "
+            f'array or a single conversation object with a "mapping" field. '
+            f'Detected shape: dict without "mapping". '
             f"Source filename: {source_file!r}."
         )
     else:
@@ -390,9 +373,7 @@ def _iter_conversations_json(
     for item in conversations:
         if not isinstance(item, dict):
             continue
-        conv_id = str(
-            item.get("id") or item.get("conversation_id") or ""
-        ).strip()
+        conv_id = str(item.get("id") or item.get("conversation_id") or "").strip()
         if not conv_id or not CHATGPT_IDENTIFIER.fullmatch(conv_id):
             raise MissingConversationIdError(
                 f'Conversation in "{source_file}" has no valid UUID identifier. '
@@ -446,12 +427,8 @@ def _safe_read_zip_entry(zf: zipfile.ZipFile, entry_name: str) -> bytes:
 def _assert_safe_zip_entry(entry_name: str) -> None:
     """Raise UnsafeZipEntryError if the entry name could escape extraction dir."""
     # Absolute paths
-    if entry_name.startswith("/") or (
-        len(entry_name) >= 2 and entry_name[1] == ":"
-    ):
-        raise UnsafeZipEntryError(
-            f'ZIP entry "{entry_name}" uses an absolute path.'
-        )
+    if entry_name.startswith("/") or (len(entry_name) >= 2 and entry_name[1] == ":"):
+        raise UnsafeZipEntryError(f'ZIP entry "{entry_name}" uses an absolute path.')
     # Path traversal
     norm = Path(entry_name)
     for part in norm.parts:

@@ -7,9 +7,9 @@ from unittest.mock import patch
 
 from typer.testing import CliRunner
 
-from mindcap.cli import app
 from mindcap.core.models import CaptureEnvelope, CaptureRequest, RawResponseUnit
 from mindcap.plugins.distrokid.plugin import DistroKidPlugin
+from mindcap_cli.app import app
 
 ALBUM_UUID = "642baa93-568f-47a7-9955-8e4426a9d1d0"
 _CAPTURED_AT = datetime(2026, 1, 1, tzinfo=UTC)

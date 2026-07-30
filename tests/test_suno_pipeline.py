@@ -7,7 +7,6 @@ from unittest.mock import patch
 
 from typer.testing import CliRunner
 
-from mindcap.cli import app
 from mindcap.core.models import (
     CapturedAsset,
     CaptureEnvelope,
@@ -15,6 +14,7 @@ from mindcap.core.models import (
     RawResponseUnit,
 )
 from mindcap.plugins.suno.plugin import SunoPlugin
+from mindcap_cli.app import app
 
 WORKSPACE_ID = "8f8fd77f-c5bf-467a-8cb5-558fdbf86386"
 WORKSPACE_FIXTURE = Path(__file__).parent / "fixtures" / "suno" / "workspace.json"

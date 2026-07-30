@@ -156,8 +156,7 @@ def verify_distrokid_authentication() -> DistroKidAuthenticationCheck:
         return DistroKidAuthenticationCheck(
             state=DistroKidAuthenticationState.PROFILE_LOCKED,
             detail=(
-                "Dedicated DistroKid profile is locked "
-                "by a running browser process."
+                "Dedicated DistroKid profile is locked by a running browser process."
             ),
         )
 
@@ -208,8 +207,7 @@ def verify_distrokid_authentication() -> DistroKidAuthenticationCheck:
                 return DistroKidAuthenticationCheck(
                     state=DistroKidAuthenticationState.EXPIRED,
                     detail=(
-                        "Authentication appears expired or "
-                        "requires re-verification."
+                        "Authentication appears expired or requires re-verification."
                     ),
                 )
             return DistroKidAuthenticationCheck(
@@ -229,8 +227,7 @@ def verify_distrokid_authentication() -> DistroKidAuthenticationCheck:
         return DistroKidAuthenticationCheck(
             state=DistroKidAuthenticationState.INDETERMINATE,
             detail=(
-                f"DistroKid opened at {final_path or '/'}; "
-                "login could not be proven."
+                f"DistroKid opened at {final_path or '/'}; login could not be proven."
             ),
         )
     except (Error, OSError) as error:

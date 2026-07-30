@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: "2.4.1"
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Cache Poetry virtualenv
+        uses: actions/cache@v4
+        id: cache
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('poetry.lock') }}
+
+      - name: Validate Poetry configuration
+        run: poetry check
+
+      - name: Install dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: poetry install --no-interaction
+
+      - name: Check formatting
+        run: poetry run ruff format --check .
+
+      - name: Lint
+        run: poetry run ruff check .
+
+      - name: Run tests
+        run: poetry run pytest --tb=short -q
+
+      - name: Architecture boundary tests
+        run: poetry run pytest tests/architecture/ -v
+
+      - name: Build wheel and sdist
+        run: poetry build
+
+      - name: Verify built artifacts contain required packages
+        run: |
+          python - <<'EOF'
+          import zipfile, sys
+          from pathlib import Path
+
+          wheels = list(Path("dist").glob("*.whl"))
+          if not wheels:
+              print("No wheel found", file=sys.stderr)
+              sys.exit(1)
+
+          wheel = wheels[0]
+          with zipfile.ZipFile(wheel) as zf:
+              names = zf.namelist()
+
+          required_prefixes = ["mindcap/", "mindcap_cli/"]
+          for prefix in required_prefixes:
+              found = any(n.startswith(prefix) for n in names)
+              if not found:
+                  print(f"Wheel missing package: {prefix}", file=sys.stderr)
+                  sys.exit(1)
+              print(f"  OK: {prefix} present in wheel")
+
+          if not any("py.typed" in n for n in names):
+              print("Wheel missing py.typed marker", file=sys.stderr)
+              sys.exit(1)
+          print("  OK: py.typed present")
+          print(f"Wheel {wheel.name} is valid")
+          EOF
+
+      - name: Check no uncommitted changes after build
+        run: git diff --exit-code
