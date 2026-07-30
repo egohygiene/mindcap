@@ -49,10 +49,15 @@ auth_app = typer.Typer(no_args_is_help=True, help="Manage source authentication.
 plugins_app = typer.Typer(no_args_is_help=True, help="Inspect source plugins.")
 doctor_app = typer.Typer(no_args_is_help=True, help="Inspect safe browser diagnostics.")
 inspect_app = typer.Typer(no_args_is_help=True, help="Inspect captured archives.")
+sync_app = typer.Typer(
+    no_args_is_help=True,
+    help="Provider-wide cache-aware synchronization.",
+)
 app.add_typer(auth_app, name="auth")
 app.add_typer(plugins_app, name="plugins")
 app.add_typer(doctor_app, name="doctor")
 app.add_typer(inspect_app, name="inspect")
+app.add_typer(sync_app, name="sync")
 console = Console()
 
 
@@ -896,3 +901,411 @@ def inspect_chatgpt(
             f"import manifest directory."
         )
     )
+
+
+# ---------------------------------------------------------------------------
+# Sync sub-commands
+# ---------------------------------------------------------------------------
+
+
+def _run_sync(
+    provider: str,
+    collection_url: str | None,
+    output: Path | None,
+    run_id: str | None,
+    resume: bool,
+    retry_failed: bool,
+    force: bool,
+    dry_run: bool,
+    max_items: int | None,
+    concurrency: int,
+    wait_seconds: float,
+    quiet: bool,
+    verbose: bool,
+    debug: bool,
+    json_output: bool,
+) -> None:
+    """Shared sync execution for any supported provider."""
+    from mindcap.sync.models import (
+        BatchRunConfig,
+        RunStatus,
+        run_exit_code,
+    )
+    from mindcap.sync.run_storage import RunStorage, generate_run_id
+    from mindcap.sync.runner import SyncRunner, build_sync_result
+
+    artifact_root = (output or default_artifact_root()).resolve()
+    _quiet = quiet and not json_output
+    reporter = CaptureProgressReporter(
+        console=console,
+        verbose=verbose,
+        debug=debug,
+        quiet=_quiet,
+    )
+
+    if provider == "suno":
+        from mindcap.plugins.suno.collection import SunoCollectionDiscovery
+
+        discovery = SunoCollectionDiscovery()
+        archive_subdir = "workspaces/suno"
+        collection_identifier = "suno-account"
+    elif provider == "distrokid":
+        from mindcap.plugins.distrokid.collection import DistroKidCollectionDiscovery
+
+        discovery = DistroKidCollectionDiscovery(  # type: ignore[assignment]
+            mymusic_url=collection_url or "https://distrokid.com/mymusic/"
+        )
+        archive_subdir = "releases/distrokid"
+        collection_identifier = "distrokid-library"
+    else:
+        _fail(ValueError(f'Unsupported sync provider: "{provider}"'))
+        return
+
+    config = BatchRunConfig(
+        provider=provider,
+        collection_identifier=collection_identifier,
+        collection_url=collection_url,
+        concurrency=concurrency,
+        max_items=max_items,
+        force=force,
+        dry_run=dry_run,
+        wait_seconds=wait_seconds,
+    )
+    config_fingerprint = config.fingerprint()
+
+    # ---- Resume logic --------------------------------------------------
+    prior_state = None
+    effective_run_id = run_id
+
+    if resume or run_id:
+        if run_id:
+            storage = RunStorage(artifact_root, provider, run_id)
+            prior_state = storage.load_state()
+            if prior_state is None:
+                _fail(ValueError(f"No run state found for run ID: {run_id}"))
+                return
+            effective_run_id = run_id
+        else:
+            # Auto-detect unfinished runs.
+            candidates = RunStorage.find_resumable(
+                artifact_root, provider, config_fingerprint
+            )
+            if len(candidates) == 0:
+                if not _quiet:
+                    console.print(
+                        "[yellow]No compatible unfinished run found; "
+                        "starting a new run.[/yellow]"
+                    )
+            elif len(candidates) == 1:
+                storage = candidates[0]
+                prior_state = storage.load_state()
+                effective_run_id = storage.run_id
+                if not _quiet:
+                    console.print(f"[bold]Resuming run:[/bold] {effective_run_id}")
+            else:
+                ids = ", ".join(s.run_id for s in candidates[:5])
+                _fail(
+                    ValueError(
+                        f"Multiple unfinished runs found: {ids}. "
+                        f"Pass --run-id to select one."
+                    )
+                )
+                return
+
+    if not _quiet and not dry_run:
+        reporter.phase("Authenticating...")
+        reporter.phase("Discovering collection...")
+
+    runner = SyncRunner(
+        discovery=discovery,
+        archive_subdir=archive_subdir,
+        reporter=reporter,
+    )
+
+    try:
+        state = runner.run(
+            config=config,
+            artifact_root=artifact_root,
+            run_id=effective_run_id or generate_run_id(provider),
+            prior_state=prior_state,
+            retry_failed=retry_failed,
+        )
+    except (MindcapError, OSError, ValueError) as error:
+        _fail(error)
+        return
+
+    counts = state.counts()
+    run_dir = artifact_root / "runs" / provider / state.run_id
+
+    if json_output:
+        result = build_sync_result(state, run_dir)
+        console.print_json(data=result.model_dump(mode="json"))
+    elif dry_run:
+        from mindcap.sync.plan import format_dry_run_table
+
+        console.print(f"\n[bold]{provider.title()} Sync — Dry Run[/bold]\n")
+        console.print(format_dry_run_table(len(state.items), state.items))
+        console.print()
+    elif not _quiet:
+        table = Table(title=f"{provider.title()} Account Sync", show_header=False)
+        table.add_column("Metric", style="bold")
+        table.add_column("Value")
+        table.add_row("Run ID", state.run_id)
+        table.add_row("Status", state.status.value)
+        table.add_row("Discovered", str(counts["discovered"]))
+        completed = counts["complete"] + counts["complete_with_warnings"]
+        table.add_row("Completed", str(completed))
+        table.add_row("Unchanged", str(counts["unchanged"]))
+        table.add_row("Skipped", str(counts["skipped"]))
+        table.add_row("Failed", str(counts["failed"]))
+        table.add_row("Run directory", str(run_dir))
+        console.print(table)
+    else:
+        console.print(str(run_dir))
+
+    if state.status == RunStatus.INTERRUPTED:
+        console.print(
+            f"\n[bold yellow]Capture interrupted safely.[/bold yellow]\n"
+            f"\nRun ID:\n  {state.run_id}\n"
+            f"\nResume:\n"
+            f"  mindcap sync {provider} --resume --run-id {state.run_id}"
+        )
+
+    exit_code = run_exit_code(state)
+    if exit_code != 0:
+        raise typer.Exit(code=exit_code)
+
+
+@sync_app.command("suno")
+def sync_suno(
+    collection_url: Annotated[
+        str | None,
+        typer.Argument(help="Optional collection URL override."),
+    ] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", help="Private artifact root."),
+    ] = None,
+    run_id: Annotated[
+        str | None,
+        typer.Option("--run-id", help="Explicit run ID for resume or retry."),
+    ] = None,
+    resume: Annotated[
+        bool,
+        typer.Option("--resume", help="Resume the latest unfinished compatible run."),
+    ] = False,
+    retry_failed: Annotated[
+        bool,
+        typer.Option("--retry-failed", help="Retry retryable failures from prior run"),
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Re-capture all sources ignoring local cache."),
+    ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Plan captures without executing them."),
+    ] = False,
+    max_items: Annotated[
+        int | None,
+        typer.Option("--max-items", help="Cap the number of sources to process."),
+    ] = None,
+    concurrency: Annotated[
+        int,
+        typer.Option("--concurrency", min=1, max=8),
+    ] = 1,
+    wait_seconds: Annotated[
+        float,
+        typer.Option("--wait-seconds", min=1.0, max=120.0),
+    ] = 10.0,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", help="Suppress progress output."),
+    ] = False,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", help="Emit per-item detail."),
+    ] = False,
+    debug: Annotated[
+        bool,
+        typer.Option("--debug", help="Emit low-level diagnostics (no secrets)."),
+    ] = False,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit machine-readable JSON result to stdout."),
+    ] = False,
+) -> None:
+    """Discover and archive every Suno workspace in the authenticated account."""
+    _run_sync(
+        provider="suno",
+        collection_url=collection_url,
+        output=output,
+        run_id=run_id,
+        resume=resume,
+        retry_failed=retry_failed,
+        force=force,
+        dry_run=dry_run,
+        max_items=max_items,
+        concurrency=concurrency,
+        wait_seconds=wait_seconds,
+        quiet=quiet,
+        verbose=verbose,
+        debug=debug,
+        json_output=json_output,
+    )
+
+
+@sync_app.command("distrokid")
+def sync_distrokid(
+    collection_url: Annotated[
+        str | None,
+        typer.Argument(help="My Music URL (default: https://distrokid.com/mymusic/)."),
+    ] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", help="Private artifact root."),
+    ] = None,
+    run_id: Annotated[
+        str | None,
+        typer.Option("--run-id", help="Explicit run ID for resume or retry."),
+    ] = None,
+    resume: Annotated[
+        bool,
+        typer.Option("--resume", help="Resume the latest unfinished compatible run."),
+    ] = False,
+    retry_failed: Annotated[
+        bool,
+        typer.Option("--retry-failed", help="Retry retryable failures from prior run"),
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Re-capture all sources ignoring local cache."),
+    ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Plan captures without executing them."),
+    ] = False,
+    max_items: Annotated[
+        int | None,
+        typer.Option("--max-items", help="Cap the number of sources to process."),
+    ] = None,
+    concurrency: Annotated[
+        int,
+        typer.Option("--concurrency", min=1, max=4),
+    ] = 1,
+    wait_seconds: Annotated[
+        float,
+        typer.Option("--wait-seconds", min=1.0, max=120.0),
+    ] = 10.0,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", help="Suppress progress output."),
+    ] = False,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", help="Emit per-item detail."),
+    ] = False,
+    debug: Annotated[
+        bool,
+        typer.Option("--debug", help="Emit low-level diagnostics (no secrets)."),
+    ] = False,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit machine-readable JSON result to stdout."),
+    ] = False,
+) -> None:
+    """Discover and archive every DistroKid release in the authenticated library."""
+    _run_sync(
+        provider="distrokid",
+        collection_url=collection_url,
+        output=output,
+        run_id=run_id,
+        resume=resume,
+        retry_failed=retry_failed,
+        force=force,
+        dry_run=dry_run,
+        max_items=max_items,
+        concurrency=concurrency,
+        wait_seconds=wait_seconds,
+        quiet=quiet,
+        verbose=verbose,
+        debug=debug,
+        json_output=json_output,
+    )
+
+
+@inspect_app.command("run")
+def inspect_run(
+    run_path: Annotated[
+        Path,
+        typer.Argument(help="Run state directory to inspect."),
+    ],
+) -> None:
+    """Inspect a sync batch run directory."""
+    import json as _json
+
+    run_path = run_path.expanduser().resolve()
+    run_json = run_path / "run.json"
+    if not run_json.is_file():
+        _fail(FileNotFoundError(f"No run.json found at: {run_path}"))
+        return
+
+    try:
+        state_raw = _json.loads(run_json.read_text(encoding="utf-8"))
+    except (OSError, _json.JSONDecodeError) as error:
+        _fail(error)
+        return
+
+    table = Table(title=f"Sync Run — {state_raw.get('run_id', 'unknown')}")
+    table.add_column("Field", style="bold")
+    table.add_column("Value")
+    for field in (
+        "run_id",
+        "provider",
+        "collection_identifier",
+        "status",
+        "started_at",
+        "completed_at",
+        "artifact_root",
+    ):
+        table.add_row(field, str(state_raw.get(field, "-")))
+
+    items = state_raw.get("items", [])
+    status_counts: dict[str, int] = {}
+    for item in items:
+        s = item.get("status", "unknown")
+        status_counts[s] = status_counts.get(s, 0) + 1
+    table.add_row("Total items", str(len(items)))
+    for status, count in sorted(status_counts.items()):
+        table.add_row(f"  {status}", str(count))
+    console.print(table)
+
+
+@inspect_app.command("collection")
+def inspect_collection(
+    collection_path: Annotated[
+        Path,
+        typer.Argument(help="Collection archive directory to inspect."),
+    ],
+) -> None:
+    """Inspect a collection-level archive."""
+    import json as _json
+
+    collection_path = collection_path.expanduser().resolve()
+    latest_json = collection_path / "latest.json"
+    if not latest_json.is_file():
+        _fail(FileNotFoundError(f"No latest.json found at: {collection_path}"))
+        return
+
+    try:
+        latest = _json.loads(latest_json.read_text(encoding="utf-8"))
+    except (OSError, _json.JSONDecodeError) as error:
+        _fail(error)
+        return
+
+    table = Table(title="Collection Archive")
+    table.add_column("Field", style="bold")
+    table.add_column("Value")
+    for field in ("provider", "collection_id", "run_id", "archive_version"):
+        table.add_row(field, str(latest.get(field, "-")))
+    console.print(table)
