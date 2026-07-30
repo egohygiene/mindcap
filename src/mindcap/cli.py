@@ -35,6 +35,7 @@ from mindcap.plugins.chatgpt.strategies.browser import (
 )
 from mindcap.plugins.distrokid.doctor import doctor_distrokid as run_distrokid_doctor
 from mindcap.plugins.distrokid.strategies.browser import authenticate_distrokid
+from mindcap.plugins.soundcloud.doctor import doctor_soundcloud as run_soundcloud_doctor
 from mindcap.plugins.suno.auth import authenticate_suno_cookie_stdin
 from mindcap.plugins.suno.doctor import doctor_suno as run_suno_doctor
 from mindcap.registry import build_registry
@@ -625,6 +626,8 @@ def list_plugins() -> None:
 @app.command()
 def paths() -> None:
     """Display artifact and authentication-state locations."""
+    from mindcap.config import soundcloud_profile_dir
+
     table = Table("Purpose", "Path", "Archive this?")
     table.add_row("Artifacts", str(default_artifact_root()), "Yes, after review")
     table.add_row(
@@ -635,6 +638,11 @@ def paths() -> None:
     table.add_row(
         "DistroKid browser profile",
         str(distrokid_profile_dir()),
+        "No — contains authentication state",
+    )
+    table.add_row(
+        "SoundCloud browser profile",
+        str(soundcloud_profile_dir()),
         "No — contains authentication state",
     )
     console.print(table)
@@ -740,6 +748,17 @@ def doctor_distrokid(
         _fail(error)
 
 
+@doctor_app.command("soundcloud")
+def doctor_soundcloud(
+    verbose: Annotated[bool, typer.Option("--verbose")] = False,
+) -> None:
+    """Print privacy-safe SoundCloud authentication and API diagnostics."""
+    try:
+        run_soundcloud_doctor(console, verbose=verbose)
+    except Exception as error:
+        _fail(error)
+
+
 @inspect_app.command("suno")
 def inspect_suno(
     archive: Annotated[Path, typer.Argument(help="Suno workspace bundle directory.")],
@@ -764,6 +783,21 @@ def inspect_distrokid(
 
     try:
         inspect_distrokid_archive(archive, console)
+    except (MindcapError, OSError) as error:
+        _fail(error)
+
+
+@inspect_app.command("soundcloud")
+def inspect_soundcloud(
+    archive: Annotated[
+        Path, typer.Argument(help="SoundCloud archive bundle directory (v<N> folder).")
+    ],
+) -> None:
+    """Inspect a captured SoundCloud archive."""
+    from mindcap.plugins.soundcloud.archive.inspector import inspect_soundcloud_archive
+
+    try:
+        inspect_soundcloud_archive(archive, console)
     except (MindcapError, OSError) as error:
         _fail(error)
 
@@ -957,6 +991,12 @@ def _run_sync(
         )
         archive_subdir = "releases/distrokid"
         collection_identifier = "distrokid-library"
+    elif provider == "soundcloud":
+        from mindcap.plugins.soundcloud.collection import SoundCloudCollectionDiscovery
+
+        discovery = SoundCloudCollectionDiscovery()  # type: ignore[assignment]
+        archive_subdir = "archives/soundcloud"
+        collection_identifier = "soundcloud-account"
     else:
         _fail(ValueError(f'Unsupported sync provider: "{provider}"'))
         return
@@ -1217,6 +1257,85 @@ def sync_distrokid(
     """Discover and archive every DistroKid release in the authenticated library."""
     _run_sync(
         provider="distrokid",
+        collection_url=collection_url,
+        output=output,
+        run_id=run_id,
+        resume=resume,
+        retry_failed=retry_failed,
+        force=force,
+        dry_run=dry_run,
+        max_items=max_items,
+        concurrency=concurrency,
+        wait_seconds=wait_seconds,
+        quiet=quiet,
+        verbose=verbose,
+        debug=debug,
+        json_output=json_output,
+    )
+
+
+@sync_app.command("soundcloud")
+def sync_soundcloud(
+    collection_url: Annotated[
+        str | None,
+        typer.Argument(help="Optional SoundCloud account URL override."),
+    ] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", help="Private artifact root."),
+    ] = None,
+    run_id: Annotated[
+        str | None,
+        typer.Option("--run-id", help="Explicit run ID for resume or retry."),
+    ] = None,
+    resume: Annotated[
+        bool,
+        typer.Option("--resume", help="Resume the latest unfinished compatible run."),
+    ] = False,
+    retry_failed: Annotated[
+        bool,
+        typer.Option("--retry-failed", help="Retry retryable failures from prior run"),
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Re-capture all sources ignoring local cache."),
+    ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Plan captures without executing them."),
+    ] = False,
+    max_items: Annotated[
+        int | None,
+        typer.Option("--max-items", help="Cap the number of sources to process."),
+    ] = None,
+    concurrency: Annotated[
+        int,
+        typer.Option("--concurrency", min=1, max=8),
+    ] = 1,
+    wait_seconds: Annotated[
+        float,
+        typer.Option("--wait-seconds", min=1.0, max=120.0),
+    ] = 10.0,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", help="Suppress progress output."),
+    ] = False,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", help="Emit per-item detail."),
+    ] = False,
+    debug: Annotated[
+        bool,
+        typer.Option("--debug", help="Emit low-level diagnostics (no secrets)."),
+    ] = False,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit machine-readable JSON result to stdout."),
+    ] = False,
+) -> None:
+    """Discover and archive every track in the authenticated SoundCloud account."""
+    _run_sync(
+        provider="soundcloud",
         collection_url=collection_url,
         output=output,
         run_id=run_id,

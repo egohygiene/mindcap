@@ -1,0 +1,1 @@
+"""SoundCloud capture strategies."""
