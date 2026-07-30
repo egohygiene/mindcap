@@ -13,7 +13,6 @@ from mindcap.cli import app
 from mindcap.core.errors import VerificationError
 from mindcap.plugins.suno.archive.inspector import inspect_suno_archive
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -214,20 +213,22 @@ def test_descriptive_media_filename_opaque_version_audio() -> None:
     from mindcap.plugins.suno.archive.service import _descriptive_media_filename
 
     result = _descriptive_media_filename("1.0.0.1.0.0", "audio/mpeg")
-    assert "audio" in result
+    assert result.startswith("variant-")
     assert "1.0.0.1.0.0" not in result
+    assert result.endswith(".bin")
 
 
 def test_descriptive_media_filename_meaningful_encoding() -> None:
     from mindcap.plugins.suno.archive.service import _descriptive_media_filename
 
     result = _descriptive_media_filename("opus", "audio/ogg")
-    assert result.startswith("opus")
+    assert result == "variant-opus.bin"
 
 
 def test_descriptive_media_filename_video_variant() -> None:
     from mindcap.plugins.suno.archive.service import _descriptive_media_filename
 
     result = _descriptive_media_filename("1.0.0", "video/mp4")
-    assert "video" in result
+    assert result.startswith("variant-")
     assert "1.0.0" not in result
+    assert result.endswith(".bin")

@@ -70,21 +70,17 @@ def _descriptive_media_filename(encoding: str, content_type: str) -> str:
     browser.  This function maps those to a descriptive name based on the
     content-type or encoding key.
     """
-    if encoding and not _VERSION_LIKE.match(encoding):
-        # Already a meaningful label (e.g. "opus", "hls", "mp4")
-        base = encoding.lower().replace(" ", "-")
-    elif "audio" in content_type:
-        fmt = content_type.split("/")[-1].split(";")[0].strip()
-        base = f"audio-{fmt}" if fmt and fmt != "octet-stream" else "audio-variant"
-    elif "video" in content_type:
-        fmt = content_type.split("/")[-1].split(";")[0].strip()
-        base = f"video-{fmt}" if fmt and fmt != "octet-stream" else "video-variant"
-    else:
-        base = "variant"
-    # Extension from content-type (best-effort)
-    ct_ext = content_type.split("/")[-1].split(";")[0].strip()
-    ext = ct_ext if ct_ext and ct_ext != "octet-stream" else "bin"
-    return f"{base}.{ext}"
+    normalized_encoding = (encoding or "unknown").lower().replace(" ", "-")
+    if not normalized_encoding or normalized_encoding == "unknown":
+        normalized_encoding = "unknown"
+    normalized_encoding = "".join(
+        ch for ch in normalized_encoding if ch.isalnum() or ch in {"-", "_", "."}
+    ).strip(".")
+    if not normalized_encoding:
+        normalized_encoding = "unknown"
+    if _VERSION_LIKE.match(normalized_encoding):
+        normalized_encoding = "versioned"
+    return f"variant-{normalized_encoding}.bin"
 
 
 class SunoWorkspaceCaptureService:
@@ -100,10 +96,10 @@ class SunoWorkspaceCaptureService:
 
     def _asset_candidates(
         self, clip: dict[str, Any], options: dict[str, Any]
-    ) -> list[tuple[str, str, str, str]]:
+    ) -> list[tuple[str, str, str, str, dict[str, Any]]]:
         metadata = _object_dict(clip.get("metadata"))
         clip_id = str(clip.get("id") or "")
-        candidates: list[tuple[str, str, str, str]] = []
+        candidates: list[tuple[str, str, str, str, dict[str, Any]]] = []
         audio_url = clip.get("audio_url") or metadata.get("audio_url")
         if isinstance(audio_url, str) and audio_url:
             candidates.append(
@@ -114,6 +110,7 @@ class SunoWorkspaceCaptureService:
                     "clips/"
                     f"{clip_id}/audio/original."
                     f"{options.get('audio_format', 'mp3')}",
+                    {},
                 )
             )
         image_url = clip.get("image_url") or metadata.get("image_url")
@@ -124,6 +121,7 @@ class SunoWorkspaceCaptureService:
                     image_url,
                     "image/jpeg",
                     f"clips/{clip_id}/artwork/cover.jpg",
+                    {},
                 )
             )
         large_image_url = clip.get("image_large_url") or metadata.get("image_large_url")
@@ -134,6 +132,7 @@ class SunoWorkspaceCaptureService:
                     large_image_url,
                     "image/jpeg",
                     f"clips/{clip_id}/artwork/cover-large.jpg",
+                    {},
                 )
             )
         if options.get("include_video", True):
@@ -145,6 +144,7 @@ class SunoWorkspaceCaptureService:
                         video_url,
                         "video/mp4",
                         f"clips/{clip_id}/video/original.mp4",
+                        {},
                     )
                 )
         # Additional media_urls variants beyond primary audio/video
@@ -168,6 +168,11 @@ class SunoWorkspaceCaptureService:
                     url,
                     content_type,
                     f"clips/{clip_id}/media/{filename}",
+                    {
+                        "provider_content_type": content_type,
+                        "provider_encoding": encoding,
+                        "provider_delivery": media_entry.get("delivery"),
+                    },
                 )
             )
         return candidates
@@ -287,7 +292,7 @@ class SunoWorkspaceCaptureService:
         video_count = 0
 
         # Pre-collect all assets to enable accurate progress bars.
-        all_asset_jobs: list[tuple[str, tuple[str, str, str, str]]] = []
+        all_asset_jobs: list[tuple[str, tuple[str, str, str, str, dict[str, Any]]]] = []
         for clip_id, clip in sorted_clips:
             for job in self._asset_candidates(clip, request.options):
                 all_asset_jobs.append((clip_id, job))
@@ -297,7 +302,13 @@ class SunoWorkspaceCaptureService:
             (cid, job) for cid, job in all_asset_jobs if job[0].startswith("artwork")
         ]
         with reporter.progress_bar("Artwork", len(artwork_jobs)) as bar:
-            for clip_id, (asset_type, url, media_type, relative_path) in artwork_jobs:
+            for clip_id, (
+                asset_type,
+                url,
+                media_type,
+                relative_path,
+                provider_meta,
+            ) in artwork_jobs:
                 downloaded = self._download_asset(
                     clip_id,
                     asset_type,
@@ -309,6 +320,7 @@ class SunoWorkspaceCaptureService:
                     assets,
                     warnings,
                     stats,
+                    provider_meta,
                 )
                 if downloaded:
                     artwork_count += 1
@@ -317,7 +329,13 @@ class SunoWorkspaceCaptureService:
         reporter.phase("Downloading audio...")
         audio_jobs = [(cid, job) for cid, job in all_asset_jobs if job[0] == "audio"]
         with reporter.progress_bar("Audio", len(audio_jobs)) as bar:
-            for clip_id, (asset_type, url, media_type, relative_path) in audio_jobs:
+            for clip_id, (
+                asset_type,
+                url,
+                media_type,
+                relative_path,
+                provider_meta,
+            ) in audio_jobs:
                 downloaded = self._download_asset(
                     clip_id,
                     asset_type,
@@ -329,6 +347,7 @@ class SunoWorkspaceCaptureService:
                     assets,
                     warnings,
                     stats,
+                    provider_meta,
                 )
                 if downloaded:
                     audio_count += 1
@@ -337,7 +356,13 @@ class SunoWorkspaceCaptureService:
         reporter.phase("Downloading videos...")
         video_jobs = [(cid, job) for cid, job in all_asset_jobs if job[0] == "video"]
         with reporter.progress_bar("Videos", len(video_jobs)) as bar:
-            for clip_id, (asset_type, url, media_type, relative_path) in video_jobs:
+            for clip_id, (
+                asset_type,
+                url,
+                media_type,
+                relative_path,
+                provider_meta,
+            ) in video_jobs:
                 downloaded = self._download_asset(
                     clip_id,
                     asset_type,
@@ -349,6 +374,7 @@ class SunoWorkspaceCaptureService:
                     assets,
                     warnings,
                     stats,
+                    provider_meta,
                 )
                 if downloaded:
                     video_count += 1
@@ -360,7 +386,13 @@ class SunoWorkspaceCaptureService:
             for cid, job in all_asset_jobs
             if not job[0].startswith("artwork") and job[0] not in ("audio", "video")
         ]
-        for clip_id, (asset_type, url, media_type, relative_path) in other_jobs:
+        for clip_id, (
+            asset_type,
+            url,
+            media_type,
+            relative_path,
+            provider_meta,
+        ) in other_jobs:
             self._download_asset(
                 clip_id,
                 asset_type,
@@ -372,6 +404,7 @@ class SunoWorkspaceCaptureService:
                 assets,
                 warnings,
                 stats,
+                provider_meta,
             )
 
         # ── Completeness validation ───────────────────────────────────────
@@ -429,6 +462,7 @@ class SunoWorkspaceCaptureService:
         assets: list[CapturedAsset],
         warnings: list[str],
         stats: CaptureStats,
+        provider_meta: dict[str, Any],
     ) -> bool:
         """Download a single asset and append to *assets*.  Returns True on success."""
         try:
@@ -449,6 +483,7 @@ class SunoWorkspaceCaptureService:
                     downloaded_at=datetime.now(UTC),
                     http_metadata={
                         "source_url": metadata.get("source_url", url),
+                        **provider_meta,
                     },
                 )
             )

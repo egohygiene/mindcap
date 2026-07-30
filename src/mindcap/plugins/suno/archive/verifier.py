@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from mindcap.core.errors import VerificationError
-from mindcap.core.hashing import sha256_bytes
+from mindcap.core.hashing import sha256_file
 
 
 def verify_workspace_bundle(bundle_path: Path) -> None:
@@ -15,6 +15,7 @@ def verify_workspace_bundle(bundle_path: Path) -> None:
     if not checksums_path.is_file():
         raise VerificationError("Bundle checksums are missing.")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    bundle_root = bundle_path.resolve()
     for required in (
         bundle_path / manifest["readme_path"],
         bundle_path / manifest["report_json_path"],
@@ -24,10 +25,17 @@ def verify_workspace_bundle(bundle_path: Path) -> None:
         if not required.is_file():
             raise VerificationError(f'Missing bundle artifact: "{required}"')
     checksums = json.loads(checksums_path.read_text(encoding="utf-8"))
+    for partial in bundle_path.rglob("*.part"):
+        if partial.is_file():
+            raise VerificationError(f'Partial file present: "{partial}"')
     for entry in checksums.get("files", []):
         path = bundle_path / entry["path"]
         if not path.is_file():
             raise VerificationError(f'Missing checksummed file: "{path}"')
-        digest = sha256_bytes(path.read_bytes())
+        if path.stat().st_size == 0:
+            raise VerificationError(f'Zero-byte file in bundle: "{path}"')
+        if path.resolve().is_relative_to(bundle_root) is False:
+            raise VerificationError(f'Unsafe path escaped bundle root: "{path}"')
+        digest = sha256_file(path)
         if digest != entry["sha256"]:
             raise VerificationError(f'Checksum mismatch: "{path}"')

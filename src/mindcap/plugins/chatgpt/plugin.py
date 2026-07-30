@@ -13,6 +13,7 @@ from mindcap.plugins.chatgpt.identifiers import (
 from mindcap.plugins.chatgpt.normalizer import normalize_chatgpt
 from mindcap.plugins.chatgpt.renderer import render_chatgpt_markdown
 from mindcap.plugins.chatgpt.strategies.browser import BrowserCaptureStrategy
+from mindcap.plugins.chatgpt.strategies.export import ExportCaptureStrategy
 from mindcap.plugins.chatgpt.strategies.saved_json import SavedJsonCaptureStrategy
 from mindcap.storage.filesystem import FilesystemStorageStrategy
 
@@ -30,7 +31,7 @@ class ChatGPTPlugin:
         return "browser"
 
     def strategies(self) -> tuple[str, ...]:
-        return ("browser", "saved-json")
+        return ("browser", "saved-json", "export")
 
     def strategy(
         self,
@@ -40,6 +41,7 @@ class ChatGPTPlugin:
         strategies: dict[str, CaptureStrategy] = {
             "browser": BrowserCaptureStrategy(),
             "saved-json": SavedJsonCaptureStrategy(),
+            "export": ExportCaptureStrategy(),
         }
         try:
             return strategies[name]
@@ -59,3 +61,6 @@ class ChatGPTPlugin:
 
     def storage(self) -> FilesystemStorageStrategy:
         return FilesystemStorageStrategy()
+
+    def export_strategy(self) -> ExportCaptureStrategy:
+        return ExportCaptureStrategy()

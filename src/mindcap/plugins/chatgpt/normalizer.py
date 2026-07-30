@@ -391,11 +391,18 @@ def normalize_chatgpt(
 
     import json
 
+    from mindcap.plugins.chatgpt.graph import verify_raw_mapping, verify_selected_path
+
     payload = json.loads(envelope.response_units[0].body)
     conversation = _select_conversation(payload, requested_identifier)
     raw_mapping = conversation.get("mapping")
     if not isinstance(raw_mapping, dict) or not raw_mapping:
         raise NormalizationError("ChatGPT conversation mapping is empty.")
+
+    # Run graph integrity checks before normalisation so that warnings can
+    # be attached to the output regardless of whether normalisation succeeds.
+    current_node = conversation.get("current_node")
+    graph_report = verify_raw_mapping(raw_mapping, current_node=current_node)
 
     messages: dict[str, dict[str, Any]] = {}
     roots: list[str] = []
@@ -517,7 +524,6 @@ def normalize_chatgpt(
     # ---------------------------------------------------------------------- #
     # Paths
     # ---------------------------------------------------------------------- #
-    current_node = conversation.get("current_node")
     provider_selected_path = _selected_path(
         raw_mapping, str(current_node) if current_node else None
     )
@@ -534,6 +540,9 @@ def normalize_chatgpt(
 
     branch_index = _compute_branch_index(raw_mapping, roots, provider_selected_path)
 
+    # Validate selected path against the raw mapping.
+    selected_path_warnings = verify_selected_path(raw_mapping, provider_selected_path)
+
     # ---------------------------------------------------------------------- #
     # Attachment warnings
     # ---------------------------------------------------------------------- #
@@ -543,6 +552,14 @@ def normalize_chatgpt(
         for a in all_attachments
         if a.get("capture_status") == "discovered"
     ]
+
+    # Merge graph warnings into attachment_warnings for backward compatibility.
+    all_warnings: list[str] = (
+        list(graph_report.warnings)
+        + list(graph_report.errors)
+        + selected_path_warnings
+        + attachment_warnings
+    )
 
     return {
         "schema": "mindcap.normalized-conversation/v0.1",
@@ -571,9 +588,11 @@ def normalize_chatgpt(
         "hidden_message_count": hidden_message_count,
         "structural_node_count": structural_node_count,
         "knowledge_eligible_message_count": knowledge_eligible_message_count,
+        # --- Graph integrity ---
+        "graph_integrity": graph_report.as_dict(),
         # --- Attachments ---
         "attachments": all_attachments,
-        "attachment_warnings": attachment_warnings,
+        "attachment_warnings": all_warnings,
         # ---
         "integrations": [],
         "redactions": [],

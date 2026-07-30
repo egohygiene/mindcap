@@ -28,13 +28,23 @@ def render_suno_markdown(normalized: dict[str, object]) -> str:
     for clip in clips:
         if not isinstance(clip, dict):
             continue
+        model = clip.get("model") if isinstance(clip.get("model"), dict) else {}
+        uses_latest = model.get("uses_latest")
+        if uses_latest is True:
+            uses_latest_label = "yes"
+        elif uses_latest is False:
+            uses_latest_label = "no"
+        else:
+            uses_latest_label = "unknown"
         lines.extend(
             [
                 f"### {clip.get('title') or clip.get('clip_id')}",
                 "",
                 f"- Clip ID: `{clip.get('clip_id')}`",
                 f"- Status: {clip.get('status') or 'unknown'}",
-                f"- Model: {clip.get('model') or 'unknown'}",
+                f"- Model: {model.get('name') or 'unknown'}",
+                f"- Major version: {model.get('major_version') or 'unknown'}",
+                f"- Uses latest model: {uses_latest_label}",
                 f"- Assets archived: {len(clip.get('archived_assets') or [])}",
                 "",
             ]

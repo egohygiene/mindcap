@@ -1,0 +1,96 @@
+[
+  {
+    "id": "aaaabbbb-cccc-dddd-eeee-000000000001",
+    "title": "Export Fixture Conversation One",
+    "create_time": 1784304000,
+    "update_time": 1784304120,
+    "current_node": "asst-1",
+    "mapping": {
+      "root-1": {
+        "id": "root-1",
+        "parent": null,
+        "children": ["user-1"],
+        "message": null
+      },
+      "user-1": {
+        "id": "user-1",
+        "parent": "root-1",
+        "children": ["asst-1"],
+        "message": {
+          "id": "user-1",
+          "author": { "role": "user" },
+          "create_time": 1784304060,
+          "status": "finished_successfully",
+          "content": {
+            "content_type": "text",
+            "parts": ["Hello from the export fixture."]
+          },
+          "metadata": {}
+        }
+      },
+      "asst-1": {
+        "id": "asst-1",
+        "parent": "user-1",
+        "children": [],
+        "message": {
+          "id": "asst-1",
+          "author": { "role": "assistant" },
+          "create_time": 1784304090,
+          "status": "finished_successfully",
+          "content": {
+            "content_type": "text",
+            "parts": ["Export fixture response one."]
+          },
+          "metadata": { "model_slug": "gpt-4o" }
+        }
+      }
+    }
+  },
+  {
+    "id": "aaaabbbb-cccc-dddd-eeee-000000000002",
+    "title": "Export Fixture Conversation Two",
+    "create_time": 1784390400,
+    "update_time": 1784390520,
+    "current_node": "asst-2",
+    "mapping": {
+      "root-2": {
+        "id": "root-2",
+        "parent": null,
+        "children": ["user-2"],
+        "message": null
+      },
+      "user-2": {
+        "id": "user-2",
+        "parent": "root-2",
+        "children": ["asst-2"],
+        "message": {
+          "id": "user-2",
+          "author": { "role": "user" },
+          "create_time": 1784390460,
+          "status": "finished_successfully",
+          "content": {
+            "content_type": "text",
+            "parts": ["Second export fixture question."]
+          },
+          "metadata": {}
+        }
+      },
+      "asst-2": {
+        "id": "asst-2",
+        "parent": "user-2",
+        "children": [],
+        "message": {
+          "id": "asst-2",
+          "author": { "role": "assistant" },
+          "create_time": 1784390490,
+          "status": "finished_successfully",
+          "content": {
+            "content_type": "text",
+            "parts": ["Export fixture response two."]
+          },
+          "metadata": { "model_slug": "gpt-4o" }
+        }
+      }
+    }
+  }
+]
