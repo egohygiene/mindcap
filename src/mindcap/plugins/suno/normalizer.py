@@ -107,13 +107,22 @@ def _normalize_clip(
         if metadata.get("prompt") is not None
         else clip.get("prompt")
     )
-    tags_raw = (
+    raw_style_prompt = (
         metadata.get("tags") if metadata.get("tags") is not None else clip.get("tags")
     )
-    display_tags_raw = metadata.get("display_tags") or clip.get("display_tags")
+    display_tags_raw = (
+        metadata.get("display_tags")
+        if metadata.get("display_tags") is not None
+        else clip.get("display_tags")
+    )
 
     # Control sliders: extensible dictionary, never hardcode names.
-    sliders = _object_dict(metadata.get("sliders") or clip.get("sliders"))
+    sliders = _object_dict(
+        metadata.get("control_sliders")
+        or metadata.get("sliders")
+        or clip.get("control_sliders")
+        or clip.get("sliders")
+    )
 
     # Remix lineage
     remix_lineage: dict[str, Any] = {}
@@ -159,12 +168,25 @@ def _normalize_clip(
                 or metadata.get("model")
             ),
             "major_version": clip.get("major_model_version"),
-            "uses_latest": clip.get("uses_latest_model"),
+            "uses_latest": (
+                clip.get("uses_latest_model")
+                if clip.get("uses_latest_model") is not None
+                else metadata.get("uses_latest_model")
+            ),
+            "badges": _object_list(
+                metadata.get("model_badges")
+                if metadata.get("model_badges") is not None
+                else clip.get("badges")
+            ),
+            "secondary_badges": _object_list(
+                metadata.get("secondary_badges")
+                if metadata.get("secondary_badges") is not None
+                else clip.get("secondary_badges")
+            ),
         },
         "prompts": {
             "prompt": prompt,
-            "tags": tags_raw,
-            "tags_list": _coerce_tags(tags_raw),
+            "raw_style_prompt": raw_style_prompt,
             "display_tags": _object_list(display_tags_raw),
             "lyrics_prompt": metadata.get("lyrics_prompt") or clip.get("lyrics_prompt"),
             "style_prompt": metadata.get("style_prompt") or clip.get("style_prompt"),
@@ -217,7 +239,7 @@ def _normalize_clip(
         ),
         "parent_id": clip.get("parent_id") or metadata.get("parent_id"),
         "source_id": clip.get("source_id") or metadata.get("source_id"),
-        "tags": _coerce_tags(tags_raw),
+        "tags": raw_style_prompt,
         "instrumental": generation_flags.get("make_instrumental"),
         "provider_metadata": clip,
         "archived_assets": [
@@ -253,7 +275,7 @@ def normalize_suno(
         )
 
     return {
-        "schema": "mindcap.suno-workspace/v0.2",
+        "schema": "mindcap.suno-workspace/v0.3",
         "provider": "suno",
         "source_id": f"suno-{requested_identifier}",
         "workspace_id": requested_identifier,

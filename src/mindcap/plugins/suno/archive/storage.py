@@ -130,11 +130,31 @@ class SunoWorkspaceStorageStrategy:
                 "warnings": normalized.get("warnings") or [],
                 "safe_metadata": envelope.safe_metadata,
             }
+            report_markdown = [
+                "# Suno Capture Report",
+                "",
+                f"- Source ID: `{source_id}`",
+                f"- Capture version: {version}",
+                f"- Workspace ID: `{normalized['workspace_id']}`",
+                f"- Status: {report_json['status']}",
+                f"- Clips archived: {report_json['clip_count']}",
+                f"- Assets archived: {report_json['asset_count']}",
+                "",
+            ]
+            warnings = report_json.get("warnings") or []
+            if warnings:
+                report_markdown.extend(["## Warnings", ""])
+                for warning in warnings:
+                    report_markdown.append(f"- ⚠ {warning}")
+                report_markdown.append("")
             write_text(
                 "reports/capture-report.json",
                 json.dumps(report_json, indent=2, sort_keys=True, ensure_ascii=False),
             )
-            write_text("reports/capture-report.md", transcript)
+            write_text(
+                "reports/capture-report.md",
+                "\n".join(report_markdown).rstrip() + "\n",
+            )
 
             clip_map = {
                 str(clip["clip_id"]): clip

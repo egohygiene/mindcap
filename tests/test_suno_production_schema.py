@@ -160,7 +160,7 @@ def test_production_response_normalized_correctly() -> None:
     envelope = _envelope_from_project_fixture()
     result = normalize_suno(envelope, PROJECT_ID)
 
-    assert result["schema"] == "mindcap.suno-workspace/v0.2"
+    assert result["schema"] == "mindcap.suno-workspace/v0.3"
     assert result["workspace_id"] == PROJECT_ID
     assert result["title"] == "Synthetic Production Project"
     assert len(result["clips"]) == 3
@@ -189,8 +189,10 @@ def test_empty_prompt_preserved_when_tags_populated() -> None:
     # Prompt is explicitly empty string in the fixture
     assert clip["prompts"]["prompt"] == ""
     # Tags carry the real creative intent
-    assert clip["prompts"]["tags"] == "dream pop shimmering guitars hopeful"
-    assert "dream" in clip["prompts"]["tags_list"]
+    assert (
+        clip["prompts"]["raw_style_prompt"] == "dream pop shimmering guitars hopeful"
+    )
+    assert "tags_list" not in clip["prompts"]
 
 
 # ---------------------------------------------------------------------------
@@ -225,6 +227,36 @@ def test_unknown_slider_names_preserved() -> None:
     # Unknown slider from fixture should be preserved
     assert "new_experimental_slider" in sliders
     assert sliders["new_experimental_slider"] == 0.9
+
+
+def test_control_sliders_key_is_supported() -> None:
+    project = json.loads(PROJECT_FIXTURE.read_text(encoding="utf-8"))
+    project["project_clips"][0]["clip"]["metadata"]["control_sliders"] = {
+        "depth": 0.7,
+        "brightness": 0.1,
+    }
+    project["project_clips"][0]["clip"]["metadata"]["sliders"] = {}
+    envelope = CaptureEnvelope(
+        provider="suno",
+        source_type="workspace",
+        canonical_identifier=PROJECT_ID,
+        canonical_url=None,
+        captured_at=_CAPTURED_AT,
+        strategy="api",
+        response_units=[
+            RawResponseUnit(
+                unit_id="workspace-000",
+                sequence=0,
+                media_type="application/json",
+                body=json.dumps(project).encode("utf-8"),
+                endpoint_category="workspace",
+                retrieved_at=_CAPTURED_AT,
+            )
+        ],
+    )
+    result = normalize_suno(envelope, PROJECT_ID)
+    clip = next(c for c in result["clips"] if c["clip_id"] == "clip-prod-001")
+    assert clip["sliders"]["depth"] == 0.7
 
 
 # ---------------------------------------------------------------------------
@@ -353,6 +385,34 @@ def test_instrumental_flag_preserved() -> None:
     assert clip003["generation_flags"]["make_instrumental"] is True
     assert clip003["generation_flags"]["has_vocal"] is False
     assert clip003["generation_flags"]["has_stem"] is True
+
+
+def test_model_uses_latest_falls_back_to_metadata() -> None:
+    project = json.loads(PROJECT_FIXTURE.read_text(encoding="utf-8"))
+    clip = project["project_clips"][0]["clip"]
+    clip["uses_latest_model"] = None
+    clip["metadata"]["uses_latest_model"] = True
+    envelope = CaptureEnvelope(
+        provider="suno",
+        source_type="workspace",
+        canonical_identifier=PROJECT_ID,
+        canonical_url=None,
+        captured_at=_CAPTURED_AT,
+        strategy="api",
+        response_units=[
+            RawResponseUnit(
+                unit_id="workspace-000",
+                sequence=0,
+                media_type="application/json",
+                body=json.dumps(project).encode("utf-8"),
+                endpoint_category="workspace",
+                retrieved_at=_CAPTURED_AT,
+            )
+        ],
+    )
+    result = normalize_suno(envelope, PROJECT_ID)
+    normalized = next(c for c in result["clips"] if c["clip_id"] == "clip-prod-001")
+    assert normalized["model"]["uses_latest"] is True
 
 
 # ---------------------------------------------------------------------------
