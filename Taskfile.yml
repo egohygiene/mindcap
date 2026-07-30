@@ -293,3 +293,89 @@ tasks:
         fi
         uv run mindcap verify "{{.CLI_ARGS}}"
     silent: false
+
+  # ── Sync tasks ──────────────────────────────────────────────────────────────
+
+  suno:sync:
+    desc: >-
+      Discover and archive every Suno workspace in the authenticated account.
+      Automatically resumes the latest unfinished run when unambiguous.
+    cmds:
+      - uv run mindcap sync suno --resume
+    silent: false
+
+  suno:sync:resume:
+    desc: >-
+      Resume a specific Suno sync run by run ID.
+      Usage: task suno:sync:resume -- "<run-id>"
+    cmds:
+      - |
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          printf '%s\n' "Usage: task suno:sync:resume -- \"<run-id>\""
+          printf '%s\n' "Example: task suno:sync:resume -- \"suno-20260730T164500Z-abc123\""
+          exit 1
+        fi
+        uv run mindcap sync suno --resume --run-id "{{.CLI_ARGS}}"
+    silent: false
+
+  suno:sync:dry-run:
+    desc: >-
+      Plan a Suno account-wide sync without capturing any sources.
+    cmds:
+      - uv run mindcap sync suno --dry-run
+    silent: false
+
+  distrokid:sync:
+    desc: >-
+      Discover and archive every DistroKid release in the authenticated library.
+      Automatically resumes the latest unfinished run when unambiguous.
+    cmds:
+      - uv run mindcap sync distrokid --resume
+    silent: false
+
+  distrokid:sync:resume:
+    desc: >-
+      Resume a specific DistroKid sync run by run ID.
+      Usage: task distrokid:sync:resume -- "<run-id>"
+    cmds:
+      - |
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          printf '%s\n' "Usage: task distrokid:sync:resume -- \"<run-id>\""
+          printf '%s\n' "Example: task distrokid:sync:resume -- \"distrokid-20260730T164500Z-abc123\""
+          exit 1
+        fi
+        uv run mindcap sync distrokid --resume --run-id "{{.CLI_ARGS}}"
+    silent: false
+
+  distrokid:sync:dry-run:
+    desc: >-
+      Plan a DistroKid library-wide sync without capturing any releases.
+    cmds:
+      - uv run mindcap sync distrokid --dry-run
+    silent: false
+
+  sync:inspect:
+    desc: >-
+      Inspect a sync run state directory.
+      Usage: task sync:inspect -- "<run-directory>"
+    cmds:
+      - |
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          printf '%s\n' "Usage: task sync:inspect -- \"<run-directory>\""
+          exit 1
+        fi
+        uv run mindcap inspect run "{{.CLI_ARGS}}"
+    silent: false
+
+  sync:verify:
+    desc: >-
+      Verify the integrity of a captured archive bundle.
+      Usage: task sync:verify -- "<bundle-path>"
+    cmds:
+      - |
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          printf '%s\n' "Usage: task sync:verify -- \"<bundle-path>\""
+          exit 1
+        fi
+        uv run mindcap verify "{{.CLI_ARGS}}"
+    silent: false
