@@ -121,6 +121,14 @@ def test_suno_pipeline_creates_verified_workspace_bundle(tmp_path: Path) -> None
     assert (stored.path / "workspace" / "metadata.json").is_file()
     assert (stored.path / "clips" / "clip-alpha" / "lyrics" / "lyrics.txt").is_file()
     assert (stored.path / "clips" / "clip-alpha" / "audio" / "original.mp3").is_file()
+    readme = (stored.path / "README.md").read_text(encoding="utf-8")
+    report_md = (stored.path / "reports" / "capture-report.md").read_text(
+        encoding="utf-8"
+    )
+    assert readme != report_md
+    assert "- Model: chirp-v4" in readme
+    assert "Major version: unknown" in readme
+    assert "Suno Capture Report" in report_md
     plugin.storage().verify(stored.path)
 
 
