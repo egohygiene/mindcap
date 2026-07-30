@@ -4,6 +4,7 @@ from typing import Any
 
 from mindcap.core.errors import InvalidSourceError
 from mindcap.core.models import CaptureEnvelope
+from mindcap.core.progress import CaptureProgressReporter
 from mindcap.core.protocols import CaptureStrategy
 from mindcap.plugins.chatgpt.identifiers import (
     canonicalize_chatgpt_identifier,
@@ -31,7 +32,11 @@ class ChatGPTPlugin:
     def strategies(self) -> tuple[str, ...]:
         return ("browser", "saved-json")
 
-    def strategy(self, name: str) -> CaptureStrategy:
+    def strategy(
+        self,
+        name: str,
+        reporter: CaptureProgressReporter | None = None,
+    ) -> CaptureStrategy:
         strategies: dict[str, CaptureStrategy] = {
             "browser": BrowserCaptureStrategy(),
             "saved-json": SavedJsonCaptureStrategy(),

@@ -4,6 +4,7 @@ import json
 import platform
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -19,6 +20,7 @@ from mindcap.config import (
 )
 from mindcap.core.errors import MindcapError
 from mindcap.core.models import CaptureRequest
+from mindcap.core.progress import CaptureProgressReporter, CaptureStats
 from mindcap.plugins.chatgpt.strategies.browser import (
     _find_stable_chrome,
     _is_dedicated_chrome_running,
@@ -40,9 +42,11 @@ app = typer.Typer(
 auth_app = typer.Typer(no_args_is_help=True, help="Manage source authentication.")
 plugins_app = typer.Typer(no_args_is_help=True, help="Inspect source plugins.")
 doctor_app = typer.Typer(no_args_is_help=True, help="Inspect safe browser diagnostics.")
+inspect_app = typer.Typer(no_args_is_help=True, help="Inspect captured archives.")
 app.add_typer(auth_app, name="auth")
 app.add_typer(plugins_app, name="plugins")
 app.add_typer(doctor_app, name="doctor")
+app.add_typer(inspect_app, name="inspect")
 console = Console()
 
 
@@ -87,6 +91,16 @@ def _capture(
     options: dict[str, Any],
     identifier_override: str | None = None,
 ) -> None:
+    verbose: bool = bool(options.get("verbose"))
+    debug: bool = bool(options.get("debug"))
+    quiet: bool = bool(options.get("quiet")) and not bool(options.get("json"))
+    reporter = CaptureProgressReporter(
+        console=console,
+        verbose=verbose,
+        debug=debug,
+        quiet=quiet,
+    )
+    start_time = time.monotonic()
     try:
         registry = build_registry()
         plugin = registry.get(source_type)
@@ -104,10 +118,15 @@ def _capture(
             wait_seconds=wait_seconds,
             options=options,
         )
-        envelope = plugin.strategy(selected_strategy).capture(request)
+        reporter.phase("Authenticating...")
+        strategy_obj = plugin.strategy(selected_strategy, reporter=reporter)
+        envelope = strategy_obj.capture(request)
+        reporter.phase("Generating manifests...")
         normalized = plugin.normalize(envelope, identifier)
         transcript = plugin.render(normalized)
+        reporter.phase("Verifying archive...")
         stored = plugin.storage().persist(request, envelope, normalized, transcript)
+        elapsed = time.monotonic() - start_time
         if options.get("json"):
             console.print_json(
                 data={
@@ -117,14 +136,27 @@ def _capture(
                     "path": str(stored.path),
                 }
             )
-        elif options.get("quiet"):
+        elif quiet:
             console.print(str(stored.path))
         else:
-            console.print(
-                f"[bold green]{stored.status.title()}[/bold green] "
-                f"[cyan]{stored.source_id}[/cyan] version {stored.version}"
+            safe_meta = envelope.safe_metadata
+            stats = CaptureStats(
+                clips_archived=int(safe_meta.get("clip_count") or 0),
+                audio_downloaded=int(safe_meta.get("audio_count") or 0),
+                artwork_downloaded=int(safe_meta.get("artwork_count") or 0),
+                videos_downloaded=int(safe_meta.get("video_count") or 0),
+                bytes_downloaded=int(safe_meta.get("bytes_downloaded") or 0),
+                elapsed_seconds=elapsed,
+                verification_passed=stored.status in ("complete", "unchanged"),
+                warnings=list(envelope.warnings),
             )
-            console.print(str(stored.path))
+            reporter.summary(
+                stats,
+                project_name=str(safe_meta["project_title"])
+                if safe_meta.get("project_title")
+                else None,
+                archive_path=str(stored.path),
+            )
     except (MindcapError, OSError, ValueError, json.JSONDecodeError) as error:
         _fail(error)
 
@@ -205,6 +237,14 @@ def capture(
         bool,
         typer.Option("--quiet", help="Print only the resulting bundle path."),
     ] = False,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", help="Emit per-asset detail during capture."),
+    ] = False,
+    debug: Annotated[
+        bool,
+        typer.Option("--debug", help="Emit low-level diagnostics (no secrets)."),
+    ] = False,
 ) -> None:
     """Capture a source through a registered plugin and strategy."""
     _capture(
@@ -222,6 +262,8 @@ def capture(
             "force": force,
             "json": json_output,
             "quiet": quiet,
+            "verbose": verbose,
+            "debug": debug,
         },
     )
 
@@ -270,7 +312,10 @@ def verify(
     """Verify stored artifact hashes and required files."""
     try:
         verify_bundle(bundle_path.expanduser().resolve())
-        console.print("[bold green]Bundle verification passed.[/bold green]")
+        console.print("[green]✓ Manifest[/green]")
+        console.print("[green]✓ Checksums[/green]")
+        console.print()
+        console.print("[bold green]PASS[/bold green]")
     except (MindcapError, OSError, KeyError, TypeError) as error:
         _fail(error)
 
@@ -385,4 +430,17 @@ def doctor_suno(
     try:
         run_suno_doctor(console, verbose=verbose)
     except Exception as error:
+        _fail(error)
+
+
+@inspect_app.command("suno")
+def inspect_suno(
+    archive: Annotated[Path, typer.Argument(help="Suno workspace bundle directory.")],
+) -> None:
+    """Inspect a captured Suno workspace archive."""
+    from mindcap.plugins.suno.archive.inspector import inspect_suno_archive
+
+    try:
+        inspect_suno_archive(archive, console)
+    except (MindcapError, OSError) as error:
         _fail(error)
