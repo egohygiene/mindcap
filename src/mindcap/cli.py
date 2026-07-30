@@ -5,10 +5,13 @@ import platform
 import subprocess
 import sys
 import time
+import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
 
 import typer
+import yaml
 from rich.console import Console
 from rich.table import Table
 
@@ -19,7 +22,7 @@ from mindcap.config import (
     find_repository_root,
 )
 from mindcap.core.errors import MindcapError
-from mindcap.core.models import CaptureRequest
+from mindcap.core.models import CaptureEnvelope, CaptureRequest, RawResponseUnit
 from mindcap.core.progress import CaptureProgressReporter, CaptureStats
 from mindcap.plugins.chatgpt.strategies.browser import (
     _find_stable_chrome,
@@ -161,6 +164,207 @@ def _capture(
         _fail(error)
 
 
+def _capture_export(
+    source: str,
+    output: Path | None,
+    options: dict[str, Any],
+    conversation_id_filter: str | None = None,
+) -> None:
+    """Batch-ingest a ChatGPT official export ZIP or directory."""
+    from mindcap.core.errors import (
+        MissingConversationIdError,
+        UnsupportedConversationSchemaError,
+        UnsupportedExportError,
+    )
+    from mindcap.plugins.chatgpt.plugin import ChatGPTPlugin
+    from mindcap.plugins.chatgpt.strategies.export import ExportCaptureStrategy
+
+    quiet: bool = bool(options.get("quiet")) and not bool(options.get("json"))
+    verbose: bool = bool(options.get("verbose"))
+    artifact_root = (output or default_artifact_root()).resolve()
+    start_time = time.monotonic()
+
+    plugin = ChatGPTPlugin()
+    export_strategy = ExportCaptureStrategy()
+
+    try:
+        discovery = export_strategy.discover(source)
+    except (MindcapError, OSError) as error:
+        _fail(error)
+        return
+
+    if not quiet:
+        console.print(
+            f"[bold]Inspecting export:[/bold] {source}\n"
+            f"  Conversation files: {len(discovery.conversation_files)}\n"
+            f"  Metadata files:     {len(discovery.metadata_files)}\n"
+            f"  Unknown files:      {len(discovery.unknown_files)}"
+        )
+        for w in discovery.warnings:
+            console.print(f"  [yellow]⚠ {w}[/yellow]")
+
+    import_id = f"import-{uuid.uuid4().hex[:16]}"
+    import_root = artifact_root / "imports" / "chatgpt" / import_id
+    import_root.mkdir(parents=True, exist_ok=True)
+
+    imported: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+    unchanged: list[dict[str, Any]] = []
+    all_warnings: list[str] = list(discovery.warnings)
+
+    total_discovered = 0
+
+    if not quiet:
+        console.print("\n[bold]Parsing conversations...[/bold]")
+
+    try:
+        for record in export_strategy.iter_conversations(
+            source, conversation_id=conversation_id_filter
+        ):
+            total_discovered += 1
+            conv_id = record.conversation_id
+            try:
+                envelope = CaptureEnvelope(
+                    provider="chatgpt",
+                    source_type="conversation",
+                    canonical_identifier=conv_id,
+                    canonical_url=f"https://chatgpt.com/c/{conv_id}",
+                    captured_at=datetime.now(UTC),
+                    strategy="export",
+                    response_units=[
+                        RawResponseUnit(
+                            unit_id="response-000",
+                            sequence=0,
+                            media_type="application/json",
+                            body=record.raw_bytes,
+                        )
+                    ],
+                    safe_metadata={
+                        "input_kind": "export",
+                        "source_file": record.source_file,
+                        "raw_sha256": record.sha256,
+                    },
+                )
+                request = CaptureRequest(
+                    source_type="chatgpt",
+                    source=source,
+                    provider="chatgpt",
+                    canonical_identifier=conv_id,
+                    canonical_url=f"https://chatgpt.com/c/{conv_id}",
+                    strategy="export",
+                    artifact_root=artifact_root,
+                )
+                normalized = plugin.normalize(envelope, conv_id)
+                transcript = plugin.render(normalized)
+                stored = plugin.storage().persist(
+                    request, envelope, normalized, transcript
+                )
+                entry: dict[str, Any] = {
+                    "conversation_id": conv_id,
+                    "status": stored.status,
+                    "version": stored.version,
+                    "bundle_path": str(stored.path),
+                    "source_file": record.source_file,
+                    "raw_sha256": record.sha256,
+                }
+                if stored.status == "unchanged":
+                    unchanged.append(entry)
+                else:
+                    imported.append(entry)
+                if verbose:
+                    console.print(
+                        f"  [{stored.status}] {conv_id} → {stored.path.name}"
+                    )
+            except (MindcapError, OSError, ValueError, json.JSONDecodeError) as exc:
+                failed.append(
+                    {
+                        "conversation_id": conv_id,
+                        "status": "failed",
+                        "error": str(exc),
+                        "source_file": record.source_file,
+                    }
+                )
+                all_warnings.append(
+                    f"Failed to import conversation {conv_id}: {exc}"
+                )
+    except (
+        UnsupportedExportError,
+        UnsupportedConversationSchemaError,
+        MissingConversationIdError,
+        MindcapError,
+        OSError,
+    ) as error:
+        _fail(error)
+        return
+
+    elapsed = time.monotonic() - start_time
+
+    # Write import manifest.
+    manifest: dict[str, Any] = {
+        "schema": "mindcap.import-manifest/v0.1",
+        "import_id": import_id,
+        "source": source,
+        "source_sha256": discovery.source_sha256,
+        "import_timestamp": datetime.now(UTC).isoformat(),
+        "conversations_discovered": total_discovered,
+        "conversations_imported": len(imported),
+        "conversations_unchanged": len(unchanged),
+        "conversations_failed": len(failed),
+        "warnings": all_warnings,
+        "elapsed_seconds": round(elapsed, 2),
+    }
+    conversations_index: dict[str, Any] = {
+        "import_id": import_id,
+        "imported": imported,
+        "unchanged": unchanged,
+        "failed": failed,
+    }
+    (import_root / "import-manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    (import_root / "conversations-index.json").write_text(
+        json.dumps(conversations_index, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    if all_warnings:
+        (import_root / "warnings.json").write_text(
+            json.dumps(all_warnings, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    if options.get("json"):
+        console.print_json(data=manifest)
+    elif quiet:
+        console.print(str(import_root))
+    else:
+        mins, secs = divmod(int(elapsed), 60)
+        elapsed_str = f"{mins}m {secs}s" if mins else f"{secs}s"
+        table = Table(title="ChatGPT import complete", show_header=False)
+        table.add_column("Metric", style="bold")
+        table.add_column("Value")
+        table.add_row("Conversations discovered", str(total_discovered))
+        table.add_row(
+            "Imported",
+            f"[green]{len(imported)}[/green]",
+        )
+        table.add_row(
+            "Unchanged",
+            str(len(unchanged)),
+        )
+        table.add_row(
+            "Failed",
+            f"[red]{len(failed)}[/red]" if failed else "0",
+        )
+        table.add_row("Warnings", str(len(all_warnings)))
+        table.add_row("Elapsed", elapsed_str)
+        table.add_row("Import manifest", str(import_root))
+        console.print(table)
+
+    if failed:
+        raise typer.Exit(code=1)
+
+
 @auth_app.command("chatgpt")
 def auth_chatgpt() -> None:
     """Log into the dedicated persistent ChatGPT browser profile."""
@@ -205,6 +409,13 @@ def capture(
         float,
         typer.Option("--wait-seconds", min=1.0, max=120.0),
     ] = 10.0,
+    conversation_id: Annotated[
+        str | None,
+        typer.Option(
+            "--conversation-id",
+            help="Filter export to a single conversation ID (export strategy only).",
+        ),
+    ] = None,
     audio_format: Annotated[
         str,
         typer.Option("--audio-format", help="Preferred Suno audio format."),
@@ -247,6 +458,21 @@ def capture(
     ] = False,
 ) -> None:
     """Capture a source through a registered plugin and strategy."""
+    # Export strategy requires batch processing handled separately.
+    if source_type == "chatgpt" and strategy == "export":
+        _capture_export(
+            source=source,
+            output=output,
+            conversation_id_filter=conversation_id,
+            options={
+                "force": force,
+                "json": json_output,
+                "quiet": quiet,
+                "verbose": verbose,
+                "debug": debug,
+            },
+        )
+        return
     _capture(
         source_type,
         source,
@@ -444,3 +670,167 @@ def inspect_suno(
         inspect_suno_archive(archive, console)
     except (MindcapError, OSError) as error:
         _fail(error)
+
+
+@inspect_app.command("chatgpt")
+def inspect_chatgpt(
+    archive: Annotated[
+        Path, typer.Argument(help="ChatGPT conversation bundle or import directory.")
+    ],
+    verbose: Annotated[bool, typer.Option("--verbose")] = False,
+) -> None:
+    """Inspect a captured ChatGPT conversation archive or import manifest."""
+    path = archive.expanduser().resolve()
+    if not path.exists():
+        _fail(FileNotFoundError(f'Archive path does not exist: "{path}"'))
+        return
+
+    # Import manifest directory.
+    import_manifest_path = path / "import-manifest.json"
+    if import_manifest_path.is_file():
+        try:
+            manifest = json.loads(import_manifest_path.read_text(encoding="utf-8"))
+            index_path = path / "conversations-index.json"
+            index: dict[str, Any] = (
+                json.loads(index_path.read_text(encoding="utf-8"))
+                if index_path.is_file()
+                else {}
+            )
+        except (OSError, json.JSONDecodeError) as error:
+            _fail(error)
+            return
+        table = Table(
+            title=(
+                "ChatGPT Import - "
+                + str(manifest.get("import_id", "unknown"))
+            )
+        )
+        table.add_column("Field", style="bold")
+        table.add_column("Value")
+        table.add_row("Import ID", str(manifest.get("import_id", "-")))
+        table.add_row("Source", str(manifest.get("source", "-")))
+        table.add_row(
+            "Import timestamp", str(manifest.get("import_timestamp", "-"))
+        )
+        table.add_row(
+            "Conversations discovered",
+            str(manifest.get("conversations_discovered", "-")),
+        )
+        table.add_row(
+            "Imported", str(manifest.get("conversations_imported", "-"))
+        )
+        table.add_row(
+            "Unchanged", str(manifest.get("conversations_unchanged", "-"))
+        )
+        table.add_row(
+            "Failed", str(manifest.get("conversations_failed", "-"))
+        )
+        table.add_row("Warnings", str(len(manifest.get("warnings") or [])))
+        table.add_row("Elapsed", f"{manifest.get('elapsed_seconds', '-')}s")
+        console.print(table)
+        if verbose and index.get("failed"):
+            fail_table = Table(title="Failed conversations")
+            fail_table.add_column("ID")
+            fail_table.add_column("Error")
+            for entry in index["failed"]:
+                fail_table.add_row(
+                    str(entry.get("conversation_id", "-")),
+                    str(entry.get("error", "-")),
+                )
+            console.print(fail_table)
+        return
+
+    # Conversation bundle (vN directory with manifest.yaml).
+    manifest_yaml_path = path / "manifest.yaml"
+    if manifest_yaml_path.is_file():
+        try:
+            bundle_manifest = yaml.safe_load(
+                manifest_yaml_path.read_text(encoding="utf-8")
+            )
+            normalized_path = path / "normalized" / "conversation.json"
+            normalized: dict[str, Any] = {}
+            if normalized_path.is_file():
+                normalized = json.loads(normalized_path.read_bytes())
+        except (OSError, json.JSONDecodeError, yaml.YAMLError) as error:
+            _fail(error)
+            return
+        conv = bundle_manifest.get("conversation") or {}
+        graph_integrity = normalized.get("graph_integrity") or {}
+        provider_id = bundle_manifest.get("provider_id", "unknown")
+        table = Table(
+            title=f"ChatGPT Conversation - {provider_id}"
+        )
+        table.add_column("Field", style="bold")
+        table.add_column("Value")
+        raw_title = normalized.get("title") or conv.get("title") or "-"
+        table.add_row("Title", str(raw_title))
+        table.add_row(
+            "Provider ID", str(bundle_manifest.get("provider_id", "-"))
+        )
+        table.add_row(
+            "Capture version",
+            str(bundle_manifest.get("capture_version", "-")),
+        )
+        table.add_row(
+            "Schema version",
+            str(bundle_manifest.get("versions", {}).get("schema", "-")),
+        )
+        table.add_row(
+            "Captured at", str(bundle_manifest.get("captured_at", "-"))
+        )
+        table.add_row(
+            "Strategy", str(bundle_manifest.get("strategy", "-"))
+        )
+
+        def _conv_or_norm(key: str) -> str:
+            return str(
+                conv.get(key) or normalized.get(key) or "-"
+            )
+
+        table.add_row("Total nodes", _conv_or_norm("provider_node_count"))
+        table.add_row(
+            "Total messages", _conv_or_norm("provider_message_count")
+        )
+        table.add_row(
+            "Visible messages", _conv_or_norm("visible_message_count")
+        )
+        table.add_row(
+            "Hidden messages", _conv_or_norm("hidden_message_count")
+        )
+        table.add_row(
+            "Structural nodes", _conv_or_norm("structural_node_count")
+        )
+        table.add_row(
+            "Attachments",
+            str(len(normalized.get("attachments") or [])),
+        )
+        table.add_row(
+            "Graph integrity complete",
+            "yes" if graph_integrity.get("complete") else "no",
+        )
+        table.add_row(
+            "Graph warnings",
+            str(len(graph_integrity.get("warnings") or [])),
+        )
+        table.add_row(
+            "Attachment warnings",
+            str(len(normalized.get("attachment_warnings") or [])),
+        )
+        table.add_row(
+            "Capture status",
+            str(bundle_manifest.get("capture_status", "-")),
+        )
+        console.print(table)
+        if verbose:
+            for w in graph_integrity.get("warnings") or []:
+                console.print(f"  [yellow]⚠ Graph: {w}[/yellow]")
+            for w in normalized.get("attachment_warnings") or []:
+                console.print(f"  [yellow]⚠ {w}[/yellow]")
+        return
+
+    _fail(
+        ValueError(
+            f'"{path}" does not appear to be a ChatGPT conversation bundle or '
+            f"import manifest directory."
+        )
+    )
