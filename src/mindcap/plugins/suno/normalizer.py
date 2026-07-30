@@ -108,14 +108,9 @@ def _normalize_clip(
         else clip.get("prompt")
     )
     tags_raw = (
-        metadata.get("tags")
-        if metadata.get("tags") is not None
-        else clip.get("tags")
+        metadata.get("tags") if metadata.get("tags") is not None else clip.get("tags")
     )
-    display_tags_raw = (
-        metadata.get("display_tags")
-        or clip.get("display_tags")
-    )
+    display_tags_raw = metadata.get("display_tags") or clip.get("display_tags")
 
     # Control sliders: extensible dictionary, never hardcode names.
     sliders = _object_dict(metadata.get("sliders") or clip.get("sliders"))
