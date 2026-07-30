@@ -1,0 +1,49 @@
+[
+  {
+    "id": "aaaabbbb-cccc-dddd-eeee-000000000003",
+    "title": "Partition 001 Conversation",
+    "create_time": 1784476800,
+    "update_time": 1784476920,
+    "current_node": "asst-3",
+    "mapping": {
+      "root-3": {
+        "id": "root-3",
+        "parent": null,
+        "children": ["user-3"],
+        "message": null
+      },
+      "user-3": {
+        "id": "user-3",
+        "parent": "root-3",
+        "children": ["asst-3"],
+        "message": {
+          "id": "user-3",
+          "author": { "role": "user" },
+          "create_time": 1784476860,
+          "status": "finished_successfully",
+          "content": {
+            "content_type": "text",
+            "parts": ["From the second partition."]
+          },
+          "metadata": {}
+        }
+      },
+      "asst-3": {
+        "id": "asst-3",
+        "parent": "user-3",
+        "children": [],
+        "message": {
+          "id": "asst-3",
+          "author": { "role": "assistant" },
+          "create_time": 1784476890,
+          "status": "finished_successfully",
+          "content": {
+            "content_type": "text",
+            "parts": ["Partition 001 response."]
+          },
+          "metadata": { "model_slug": "gpt-4o" }
+        }
+      }
+    }
+  }
+]
