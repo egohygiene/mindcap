@@ -3,7 +3,7 @@ from __future__ import annotations
 from typer.testing import CliRunner
 
 from mindcap import __version__
-from mindcap.cli import app
+from mindcap_cli.app import app
 
 
 def test_version_option_prints_installed_version() -> None:

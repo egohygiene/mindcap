@@ -4,12 +4,12 @@ from unittest.mock import patch
 
 from typer.testing import CliRunner
 
-from mindcap.cli import app
+from mindcap_cli.app import app
 
 
 def test_auth_distrokid_invokes_authenticator() -> None:
     runner = CliRunner()
-    with patch("mindcap.cli.authenticate_distrokid") as mock_auth:
+    with patch("mindcap_cli.app.authenticate_distrokid") as mock_auth:
         result = runner.invoke(app, ["auth", "distrokid"])
 
     assert result.exit_code == 0
@@ -19,7 +19,7 @@ def test_auth_distrokid_invokes_authenticator() -> None:
 
 def test_doctor_distrokid_invokes_doctor() -> None:
     runner = CliRunner()
-    with patch("mindcap.cli.run_distrokid_doctor") as mock_doctor:
+    with patch("mindcap_cli.app.run_distrokid_doctor") as mock_doctor:
         result = runner.invoke(app, ["doctor", "distrokid", "--verbose"])
 
     assert result.exit_code == 0

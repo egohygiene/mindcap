@@ -189,9 +189,7 @@ def test_empty_prompt_preserved_when_tags_populated() -> None:
     # Prompt is explicitly empty string in the fixture
     assert clip["prompts"]["prompt"] == ""
     # Tags carry the real creative intent
-    assert (
-        clip["prompts"]["raw_style_prompt"] == "dream pop shimmering guitars hopeful"
-    )
+    assert clip["prompts"]["raw_style_prompt"] == "dream pop shimmering guitars hopeful"
     assert "tags_list" not in clip["prompts"]
 
 

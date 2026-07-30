@@ -77,8 +77,7 @@ def test_graph_integrity_has_required_keys() -> None:
 def test_graph_integrity_node_count_matches() -> None:
     normalized = _normalize()
     assert (
-        normalized["graph_integrity"]["node_count"]
-        == normalized["provider_node_count"]
+        normalized["graph_integrity"]["node_count"] == normalized["provider_node_count"]
     )
 
 
