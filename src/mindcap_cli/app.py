@@ -33,6 +33,9 @@ from mindcap.plugins.chatgpt.strategies.browser import (
     browser_capture_architecture,
     verify_chatgpt_authentication,
 )
+from mindcap.plugins.chrome_bookmarks.diagnostics import (
+    doctor_chrome_bookmarks as run_chrome_bookmarks_doctor,
+)
 from mindcap.plugins.distrokid.doctor import doctor_distrokid as run_distrokid_doctor
 from mindcap.plugins.distrokid.strategies.browser import authenticate_distrokid
 from mindcap.plugins.soundcloud.doctor import doctor_soundcloud as run_soundcloud_doctor
@@ -96,7 +99,7 @@ def _fail(error: Exception) -> None:
 
 def _capture(
     source_type: str,
-    source: str,
+    source: str | None,
     strategy_name: str | None,
     output: Path | None,
     wait_seconds: float,
@@ -117,11 +120,11 @@ def _capture(
         registry = build_registry()
         plugin = registry.get(source_type)
         selected_strategy = strategy_name or plugin.default_strategy()
-        identifier_source = identifier_override or source
+        identifier_source = identifier_override or source or ""
         identifier, canonical_url = plugin.canonicalize(identifier_source)
         request = CaptureRequest(
             source_type=source_type,
-            source=source,
+            source=source or "",
             provider=source_type,
             canonical_identifier=identifier,
             canonical_url=canonical_url,
@@ -256,7 +259,7 @@ def _capture_export(
                 )
                 request = CaptureRequest(
                     source_type="chatgpt",
-                    source=source,
+                    source=source or "",
                     provider="chatgpt",
                     canonical_identifier=conv_id,
                     canonical_url=f"https://chatgpt.com/c/{conv_id}",
@@ -413,7 +416,12 @@ def auth_distrokid() -> None:
 @app.command()
 def capture(
     source_type: Annotated[str, typer.Argument(help="Registered source plugin.")],
-    source: Annotated[str, typer.Argument(help="Source URL or identifier.")],
+    source: Annotated[
+        str | None,
+        typer.Argument(
+            help="Source URL, identifier, or provider-specific local selector."
+        ),
+    ] = None,
     strategy: Annotated[
         str | None, typer.Option("--strategy", help="Acquisition strategy.")
     ] = None,
@@ -431,6 +439,22 @@ def capture(
             help="Filter export to a single conversation ID (export strategy only).",
         ),
     ] = None,
+    user_data_dir: Annotated[
+        list[Path] | None,
+        typer.Option("--user-data-dir", help="Chrome user-data directory to inspect."),
+    ] = None,
+    profile: Annotated[
+        list[str] | None,
+        typer.Option("--profile", help="Chrome profile directory name to capture."),
+    ] = None,
+    channel: Annotated[
+        str,
+        typer.Option("--channel", help="Chrome release channel to inspect."),
+    ] = "stable",
+    all_profiles: Annotated[
+        bool,
+        typer.Option("--all-profiles", help="Capture all discovered Chrome profiles."),
+    ] = False,
     audio_format: Annotated[
         str,
         typer.Option("--audio-format", help="Preferred Suno audio format."),
@@ -519,10 +543,14 @@ def capture(
     # Export strategy requires batch processing handled separately.
     if source_type == "chatgpt" and strategy == "export":
         _capture_export(
-            source=source,
+            source=source or "",
             output=output,
             conversation_id_filter=conversation_id,
             options={
+                "user_data_dirs": [str(item) for item in (user_data_dir or [])],
+                "profiles": list(profile or []),
+                "channel": channel,
+                "all_profiles": all_profiles,
                 "force": force,
                 "json": json_output,
                 "quiet": quiet,
@@ -550,6 +578,10 @@ def capture(
             "include_lyrics": include_lyrics,
             "include_store_links": include_store_links,
             "concurrency": concurrency,
+            "user_data_dirs": [str(item) for item in (user_data_dir or [])],
+            "profiles": list(profile or []),
+            "channel": channel,
+            "all_profiles": all_profiles,
             "force": force,
             "json": json_output,
             "quiet": quiet,
@@ -744,6 +776,17 @@ def doctor_distrokid(
     """Print privacy-safe DistroKid browser diagnostics."""
     try:
         run_distrokid_doctor(console, verbose=verbose)
+    except Exception as error:
+        _fail(error)
+
+
+@doctor_app.command("chrome-bookmarks")
+def doctor_chrome_bookmarks(
+    verbose: Annotated[bool, typer.Option("--verbose")] = False,
+) -> None:
+    """Print privacy-safe Google Chrome bookmark discovery diagnostics."""
+    try:
+        run_chrome_bookmarks_doctor(console, verbose=verbose)
     except Exception as error:
         _fail(error)
 

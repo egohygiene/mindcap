@@ -158,13 +158,13 @@ class MindcapApplication:
     def _run_capture(self, command: CaptureCommand, operation_id: str) -> CaptureResult:
         plugin = self._registry.get(command.provider)
         selected_strategy = command.strategy or plugin.default_strategy()
-        identifier_source = command.identifier_override or command.source
+        identifier_source = command.identifier_override or command.source or ""
         identifier, canonical_url = plugin.canonicalize(identifier_source)
         artifact_root = (command.output_root or default_artifact_root()).resolve()
 
         request = CaptureRequest(
             source_type=command.provider,
-            source=command.source,
+            source=command.source or "",
             provider=command.provider,
             canonical_identifier=identifier,
             canonical_url=canonical_url,
@@ -270,7 +270,7 @@ class MindcapApplication:
                 )
                 req = CaptureRequest(
                     source_type="chatgpt",
-                    source=command.source,
+                    source=command.source or "",
                     provider="chatgpt",
                     canonical_identifier=conv_id,
                     canonical_url=f"https://chatgpt.com/c/{conv_id}",
@@ -341,7 +341,7 @@ class MindcapApplication:
 
         return ImportResult(
             import_id=import_id,
-            source=command.source,
+            source=command.source or "",
             source_sha256=discovery.source_sha256,
             import_timestamp=datetime.now(UTC).isoformat(),
             conversations_discovered=total_discovered,
@@ -602,7 +602,7 @@ class MindcapApplication:
                     for c in checks
                 ],
             )
-        elif provider in ("suno", "distrokid", "soundcloud"):
+        elif provider in ("suno", "distrokid", "soundcloud", "chrome-bookmarks"):
             # These doctor implementations require a Rich console currently.
             if provider == "suno":
                 from mindcap.plugins.suno.doctor import doctor_suno as _doctor
@@ -620,6 +620,24 @@ class MindcapApplication:
                 )
 
                 _doctor(_console, verbose=command.verbose)
+            elif provider == "chrome-bookmarks":
+                from mindcap.contracts.results import DoctorCheckResult
+                from mindcap.plugins.chrome_bookmarks.diagnostics import (
+                    collect_chrome_bookmarks_diagnostics,
+                )
+
+                checks = collect_chrome_bookmarks_diagnostics()
+                return DoctorResult(
+                    provider=provider,
+                    checks=[
+                        DoctorCheckResult(
+                            name=str(c["name"]),
+                            status=str(c["status"]),
+                            detail=str(c.get("detail") or ""),
+                        )
+                        for c in checks
+                    ],
+                )
             return DoctorResult(provider=provider, checks=[])
         else:
             raise MindcapError(f'No doctor implementation for "{provider}"')

@@ -36,12 +36,14 @@ def create_default_registry() -> PluginRegistry:
 
 def build_registry() -> PluginRegistry:
     from mindcap.plugins.chatgpt.plugin import ChatGPTPlugin
+    from mindcap.plugins.chrome_bookmarks.plugin import ChromeBookmarksPlugin
     from mindcap.plugins.distrokid.plugin import DistroKidPlugin
     from mindcap.plugins.soundcloud.plugin import SoundCloudPlugin
     from mindcap.plugins.suno.plugin import SunoPlugin
 
     registry = PluginRegistry()
     registry.register(ChatGPTPlugin())
+    registry.register(ChromeBookmarksPlugin())
     registry.register(DistroKidPlugin())
     registry.register(SoundCloudPlugin())
     registry.register(SunoPlugin())

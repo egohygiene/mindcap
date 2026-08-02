@@ -1,0 +1,27 @@
+{
+  "checksum": "bad999",
+  "roots": {
+    "bookmark_bar": {
+      "children": [
+        {
+          "date_added": "13217451600000000",
+          "id": "100",
+          "name": "Valid bookmark",
+          "type": "url",
+          "url": "chrome://bookmarks"
+        },
+        {
+          "date_added": "not-a-number",
+          "id": "101",
+          "name": "Broken bookmark",
+          "type": "url"
+        }
+      ],
+      "name": "Bookmarks bar",
+      "type": "folder"
+    },
+    "other": {"children": [], "name": "Other bookmarks", "type": "folder"},
+    "synced": {"children": [], "name": "Mobile bookmarks", "type": "folder"}
+  },
+  "version": 1
+}
