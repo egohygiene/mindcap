@@ -16,7 +16,7 @@ class CaptureCommand(BaseModel):
     """Request to capture a single source through a registered plugin."""
 
     provider: str
-    source: str
+    source: str | None = None
     strategy: str | None = None
     output_root: Path | None = None
     wait_seconds: float = Field(default=10.0, ge=1.0, le=120.0)

@@ -1,0 +1,21 @@
+{
+  "checksum": "def456",
+  "roots": {
+    "bookmark_bar": {
+      "children": [
+        {
+          "date_added": "13217451600000000",
+          "id": "10",
+          "name": "Mind Garden",
+          "type": "url",
+          "url": "obsidian://open?vault=MindGarden"
+        }
+      ],
+      "name": "Bookmarks bar",
+      "type": "folder"
+    },
+    "other": {"children": [], "name": "Other bookmarks", "type": "folder"},
+    "synced": {"children": [], "name": "Mobile bookmarks", "type": "folder"}
+  },
+  "version": 1
+}

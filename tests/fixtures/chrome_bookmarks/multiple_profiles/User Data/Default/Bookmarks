@@ -1,0 +1,30 @@
+{
+  "checksum": "abc123",
+  "roots": {
+    "bookmark_bar": {
+      "children": [
+        {
+          "children": [
+            {
+              "date_added": "13217451500000000",
+              "id": "3",
+              "name": "Mindcap",
+              "type": "url",
+              "url": "https://github.com/egohygiene/mindcap"
+            }
+          ],
+          "date_added": "13217451400000000",
+          "date_modified": "13217451450000000",
+          "id": "2",
+          "name": "Projects",
+          "type": "folder"
+        }
+      ],
+      "name": "Bookmarks bar",
+      "type": "folder"
+    },
+    "other": {"children": [], "name": "Other bookmarks", "type": "folder"},
+    "synced": {"children": [], "name": "Mobile bookmarks", "type": "folder"}
+  },
+  "version": 1
+}
