@@ -86,18 +86,14 @@ class TestDiscover:
         strategy = ExportCaptureStrategy()
         discovery = strategy.discover(str(EXPORT_DIR))
         assert discovery.source_sha256 is None  # directories have no hash
-        assert any(
-            "conversations.json" in f for f in discovery.conversation_files
-        )
+        assert any("conversations.json" in f for f in discovery.conversation_files)
         assert "user.json" in discovery.metadata_files
 
     def test_discover_zip(self) -> None:
         strategy = ExportCaptureStrategy()
         discovery = strategy.discover(str(EXPORT_ZIP))
         assert discovery.source_sha256 is not None
-        assert any(
-            "conversations.json" in f for f in discovery.conversation_files
-        )
+        assert any("conversations.json" in f for f in discovery.conversation_files)
 
     def test_discover_single_json(self) -> None:
         strategy = ExportCaptureStrategy()
@@ -153,9 +149,7 @@ class TestIterConversations:
         all_records = list(strategy.iter_conversations(str(EXPORT_ZIP)))
         target = all_records[0].conversation_id
         filtered = list(
-            strategy.iter_conversations(
-                str(EXPORT_ZIP), conversation_id=target
-            )
+            strategy.iter_conversations(str(EXPORT_ZIP), conversation_id=target)
         )
         assert len(filtered) >= 1
         assert all(r.conversation_id == target for r in filtered)
@@ -315,16 +309,12 @@ class TestExportPipeline:
             )
             normalized = plugin.normalize(envelope, conv_id)
             transcript = plugin.render(normalized)
-            stored = plugin.storage().persist(
-                request, envelope, normalized, transcript
-            )
+            stored = plugin.storage().persist(request, envelope, normalized, transcript)
             assert stored.status in ("complete", "unchanged")
             assert (stored.path / "manifest.yaml").is_file()
             assert "graph_integrity" in normalized
 
-    def test_export_strategy_capture_returns_envelope(
-        self, tmp_path: Path
-    ) -> None:
+    def test_export_strategy_capture_returns_envelope(self, tmp_path: Path) -> None:
         from mindcap.core.models import CaptureRequest
 
         strategy = ExportCaptureStrategy()
@@ -346,9 +336,7 @@ class TestExportPipeline:
     def test_idempotent_import_produces_unchanged(self, tmp_path: Path) -> None:
         """Importing the same conversation twice marks the second as unchanged."""
         plugin = ChatGPTPlugin()
-        records = list(
-            ExportCaptureStrategy().iter_conversations(str(EXPORT_DIR))
-        )
+        records = list(ExportCaptureStrategy().iter_conversations(str(EXPORT_DIR)))
         record = records[0]
         conv_id = record.conversation_id
 
@@ -380,9 +368,7 @@ class TestExportPipeline:
             )
             normalized = plugin.normalize(envelope, conv_id)
             transcript = plugin.render(normalized)
-            stored = plugin.storage().persist(
-                request, envelope, normalized, transcript
-            )
+            stored = plugin.storage().persist(request, envelope, normalized, transcript)
             return stored.status
 
         first = _run()

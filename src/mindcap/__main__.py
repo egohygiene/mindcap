@@ -1,4 +1,4 @@
-from mindcap.cli import app
+from mindcap_cli.app import app
 
 if __name__ == "__main__":
     app()

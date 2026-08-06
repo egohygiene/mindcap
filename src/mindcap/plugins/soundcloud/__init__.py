@@ -1,0 +1,1 @@
+"""Mindcap SoundCloud provider plugin."""

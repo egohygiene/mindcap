@@ -9,9 +9,9 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
-from mindcap.cli import app
 from mindcap.core.errors import VerificationError
 from mindcap.plugins.suno.archive.inspector import inspect_suno_archive
+from mindcap_cli.app import app
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -158,9 +158,7 @@ def test_cli_inspect_suno_success(tmp_path: Path) -> None:
 
 def test_cli_inspect_suno_missing_archive_exits_nonzero(tmp_path: Path) -> None:
     runner = CliRunner()
-    result = runner.invoke(
-        app, ["inspect", "suno", str(tmp_path / "does-not-exist")]
-    )
+    result = runner.invoke(app, ["inspect", "suno", str(tmp_path / "does-not-exist")])
     assert result.exit_code != 0
 
 
@@ -172,7 +170,7 @@ def test_cli_inspect_suno_missing_archive_exits_nonzero(tmp_path: Path) -> None:
 def test_cli_verify_shows_checkmarks(tmp_path: Path) -> None:
     bundle = _make_minimal_bundle(tmp_path)
     runner = CliRunner()
-    with patch("mindcap.cli.verify_bundle") as mock_verify:
+    with patch("mindcap_cli.app.verify_bundle") as mock_verify:
         mock_verify.return_value = None
         result = runner.invoke(app, ["verify", str(bundle)])
     assert result.exit_code == 0

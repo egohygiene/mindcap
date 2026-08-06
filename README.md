@@ -4,7 +4,7 @@ Mindcap is an extensible Python CLI for capturing source material, preserving a
 verified archive, and preparing canonical inputs for knowledge extraction and
 the Ego Hygiene Mind Garden.
 
-Mindcap currently ships ChatGPT and Suno source plugins. The architecture is
+Mindcap currently ships ChatGPT, Suno, and DistroKid source plugins. The architecture is
 designed for future webpage, PDF, image, repository, document, and media
 plugins.
 
@@ -125,6 +125,29 @@ Capture a workspace archive using a placeholder workspace UUID:
 
 ```bash
 uv run mindcap capture suno "00000000-0000-0000-0000-000000000000"
+```
+
+## DistroKid Library and Release Capture
+
+Authenticate using a dedicated DistroKid browser profile:
+
+```bash
+uv run mindcap auth distrokid
+uv run mindcap doctor distrokid
+```
+
+Capture an authenticated release library:
+
+```bash
+uv run mindcap capture distrokid "https://distrokid.com/mymusic/"
+```
+
+Capture one release by album URL or bare UUID:
+
+```bash
+uv run mindcap capture distrokid \
+  "https://distrokid.com/dashboard/album/?albumuuid=642BAA93-568F-47A7-99558E4426A9D1D0"
+uv run mindcap capture distrokid "642BAA93-568F-47A7-99558E4426A9D1D0"
 ```
 
 ## Prove the Offline Pipeline

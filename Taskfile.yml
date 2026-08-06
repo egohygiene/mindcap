@@ -11,12 +11,55 @@ tasks:
       - task --list
     silent: true
 
+  # ── Setup and dependency management ────────────────────────────────────────
+
   setup:
-    desc: Install dependencies and prepare the local development environment.
+    desc: Install all dependencies and prepare the local development environment.
     cmds:
       - uv sync
       - uv run playwright install chromium
     silent: true
+
+  install:
+    desc: Install project dependencies using the Poetry lock file.
+    cmds:
+      - poetry install
+    silent: false
+
+  lock:
+    desc: Regenerate the Poetry lock file from pyproject.toml.
+    cmds:
+      - poetry lock
+    silent: false
+
+  test:unit:
+    desc: Run unit tests only.
+    cmds:
+      - poetry run pytest tests/ --ignore=tests/architecture --ignore=tests/integration -q
+    silent: false
+
+  test:architecture:
+    desc: Run architecture boundary tests.
+    cmds:
+      - poetry run pytest tests/architecture/ -v
+    silent: false
+
+  # ── Build and publication ──────────────────────────────────────────────────
+
+  build:
+    desc: Build the wheel and source distribution.
+    cmds:
+      - poetry build
+    silent: false
+
+  publish:check:
+    desc: Validate package metadata and build artifacts before publishing.
+    cmds:
+      - poetry check
+      - poetry build
+    silent: false
+
+  # ── Developer convenience ──────────────────────────────────────────────────
 
   paths:
     desc: Display the archive location and dedicated authentication-profile location.
@@ -95,7 +138,7 @@ tasks:
         sh: mktemp -d
     cmds:
       - >-
-        uv run mindcap import chatgpt
+        poetry run mindcap import chatgpt
         "{{.FIXTURE}}"
         --output "{{.SMOKE_DIR}}"
       - |
@@ -105,7 +148,7 @@ tasks:
           rm -rf "{{.SMOKE_DIR}}"
           exit 1
         fi
-        uv run mindcap verify "$BUNDLE"
+        poetry run mindcap verify "$BUNDLE"
         rm -rf "{{.SMOKE_DIR}}"
     silent: true
 
