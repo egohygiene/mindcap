@@ -9,32 +9,32 @@ tasks:
     desc: List available Mindcap tasks.
     cmds:
       - task --list
-    silent: false
+    silent: true
 
   setup:
     desc: Install dependencies and prepare the local development environment.
     cmds:
       - uv sync
       - uv run playwright install chromium
-    silent: false
+    silent: true
 
   paths:
     desc: Display the archive location and dedicated authentication-profile location.
     cmds:
       - uv run mindcap paths
-    silent: false
+    silent: true
 
   doctor:
     desc: Run safe browser diagnostics for the ChatGPT capture profile.
     cmds:
       - uv run mindcap doctor chatgpt
-    silent: false
+    silent: true
 
   version:
     desc: Print the installed Mindcap version.
     cmds:
       - uv run mindcap --version
-    silent: false
+    silent: true
 
   auth:
     desc: >-
@@ -42,7 +42,7 @@ tasks:
       Chrome. Opens Chrome directly — complete login manually, then press Enter.
     cmds:
       - uv run mindcap auth chatgpt
-    silent: false
+    silent: true
 
   capture:
     desc: >-
@@ -56,7 +56,7 @@ tasks:
           exit 1
         fi
         uv run mindcap capture chatgpt "{{.CLI_ARGS}}" --strategy "browser"
-    silent: false
+    silent: true
 
   import:
     desc: >-
@@ -70,7 +70,7 @@ tasks:
           exit 1
         fi
         uv run mindcap import chatgpt "{{.CLI_ARGS}}"
-    silent: false
+    silent: true
 
   verify:
     desc: >-
@@ -84,7 +84,7 @@ tasks:
           exit 1
         fi
         uv run mindcap verify "{{.CLI_ARGS}}"
-    silent: false
+    silent: true
 
   smoke:
     desc: >-
@@ -107,33 +107,33 @@ tasks:
         fi
         uv run mindcap verify "$BUNDLE"
         rm -rf "{{.SMOKE_DIR}}"
-    silent: false
+    silent: true
 
   test:
     desc: Run the complete automated test suite.
     cmds:
       - uv run pytest
-    silent: false
+    silent: true
 
   lint:
     desc: Check code style with Ruff (linting and format check).
     cmds:
       - uv run ruff check .
       - uv run ruff format --check .
-    silent: false
+    silent: true
 
   format:
     desc: Apply Ruff formatter and safe automatic lint fixes.
     cmds:
       - uv run ruff format .
       - uv run ruff check --fix .
-    silent: false
+    silent: true
 
   typecheck:
     desc: Run strict MyPy type checks for source and test paths.
     cmds:
       - uv run mypy src tests
-    silent: false
+    silent: true
 
   check:
     desc: >-
@@ -143,7 +143,7 @@ tasks:
       - task: lint
       - task: typecheck
       - task: test
-    silent: false
+    silent: true
 
   clean:
     desc: >-
@@ -154,7 +154,7 @@ tasks:
       - rm -rf .pytest_cache .ruff_cache .mypy_cache htmlcov .coverage
       - find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
       - find . -type f -name "*.pyc" -delete 2>/dev/null || true
-    silent: false
+    silent: true
 
   # ── Suno-specific tasks ─────────────────────────────────────────────────────
 
@@ -162,7 +162,7 @@ tasks:
     desc: Run safe Suno authentication and API diagnostics.
     cmds:
       - uv run mindcap doctor suno
-    silent: false
+    silent: true
 
   suno:auth:
     desc: >-
@@ -171,7 +171,7 @@ tasks:
       Example: echo "<cookie-value>" | task suno:auth
     cmds:
       - uv run mindcap auth suno --cookie-stdin
-    silent: false
+    silent: true
 
   suno:capture:
     desc: >-
@@ -188,7 +188,7 @@ tasks:
           exit 1
         fi
         uv run mindcap capture suno "{{.CLI_ARGS}}"
-    silent: false
+    silent: true
 
   suno:verify:
     desc: >-
@@ -202,7 +202,7 @@ tasks:
           exit 1
         fi
         uv run mindcap verify "{{.CLI_ARGS}}"
-    silent: false
+    silent: true
 
   suno:inspect:
     desc: >-
@@ -215,4 +215,4 @@ tasks:
           exit 1
         fi
         uv run mindcap inspect suno "{{.CLI_ARGS}}"
-    silent: false
+    silent: true
