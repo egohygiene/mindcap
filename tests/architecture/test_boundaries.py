@@ -143,6 +143,7 @@ def test_core_models_do_not_import_typer() -> None:
         MINDCAP_SRC / "application",
         MINDCAP_SRC / "core",
         MINDCAP_SRC / "contracts",
+        MINDCAP_SRC / "vault",
     ],
 )
 def test_application_layer_no_toplevel_typer(module_path: Path) -> None:
@@ -160,6 +161,7 @@ def test_application_layer_no_toplevel_typer(module_path: Path) -> None:
     [
         MINDCAP_SRC / "application",
         MINDCAP_SRC / "contracts",
+        MINDCAP_SRC / "vault",
     ],
 )
 def test_application_layer_no_toplevel_rich(module_path: Path) -> None:
@@ -236,3 +238,16 @@ def test_sync_does_not_import_mindcap_cli() -> None:
         pytest.skip("sync directory does not exist")
     bad = _imports_any(sync_dir, ("mindcap_cli",))
     assert not bad, "sync/ imports mindcap_cli:\n" + "\n".join(bad)
+
+
+# ---------------------------------------------------------------------------
+# Vault must not depend on provider implementations
+# ---------------------------------------------------------------------------
+
+
+def test_vault_does_not_import_provider_implementations() -> None:
+    vault_dir = MINDCAP_SRC / "vault"
+    if not vault_dir.exists():
+        pytest.skip("vault directory does not exist")
+    bad = _imports_any(vault_dir, ("mindcap.plugins.",))
+    assert not bad, "vault/ imports provider implementations:\n" + "\n".join(bad)
