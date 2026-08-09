@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import sqlite3
 import zipfile
 from pathlib import Path
 
@@ -13,7 +12,6 @@ from mindcap.vault.layout import (
     list_catalog_generations,
     list_incomplete_artifacts,
     load_vault_metadata,
-    packs_dir,
     read_json,
 )
 from mindcap.vault.models import CatalogSeal, VerifySummary
@@ -22,9 +20,9 @@ from mindcap.vault.packs import load_pack_index, sha256_file
 _CHUNK_SIZE = 1024 * 1024
 
 
-
-def load_latest_valid_catalog(vault_path: Path) -> tuple[int | None, Path | None, CatalogSeal | None]:
-    load_vault_metadata(vault_path)
+def load_latest_valid_catalog(
+    vault_path: Path,
+) -> tuple[int | None, Path | None, CatalogSeal | None]:
     for generation in reversed(list_catalog_generations(vault_path)):
         db_path = catalog_path(vault_path, generation)
         seal_file = catalog_seal_path(vault_path, generation)
@@ -40,7 +38,6 @@ def load_latest_valid_catalog(vault_path: Path) -> tuple[int | None, Path | None
             conn.close()
         return (generation, db_path, seal)
     return (None, None, None)
-
 
 
 def verify_vault(vault_path: Path, *, deep: bool = False) -> VerifySummary:
@@ -62,10 +59,11 @@ def verify_vault(vault_path: Path, *, deep: bool = False) -> VerifySummary:
     conn = catalog.connect_database(db_path)
     try:
         catalog.validate_database(conn)
-        rows = conn.execute("SELECT pack_id, pack_path FROM packs ORDER BY pack_id").fetchall()
+        rows = conn.execute(
+            "SELECT pack_id, pack_path FROM packs ORDER BY pack_id"
+        ).fetchall()
         catalog_pack_ids = {str(row["pack_id"]) for row in rows}
         for row in rows:
-            pack_id = str(row["pack_id"])
             pack_file = vault_path / str(row["pack_path"])
             if not pack_file.is_file():
                 raise VaultError(f'Missing referenced pack: "{pack_file}"')
@@ -104,7 +102,6 @@ def verify_vault(vault_path: Path, *, deep: bool = False) -> VerifySummary:
     )
 
 
-
 def _verify_object(
     *,
     pack_file: Path,
@@ -114,10 +111,12 @@ def _verify_object(
 ) -> None:
     digest = hashlib.sha256()
     total = 0
-    with zipfile.ZipFile(pack_file, "r") as archive:
-        with archive.open(member_name, "r") as handle:
-            while chunk := handle.read(_CHUNK_SIZE):
-                digest.update(chunk)
-                total += len(chunk)
+    with (
+        zipfile.ZipFile(pack_file, "r") as archive,
+        archive.open(member_name, "r") as handle,
+    ):
+        while chunk := handle.read(_CHUNK_SIZE):
+            digest.update(chunk)
+            total += len(chunk)
     if total != expected_size or digest.hexdigest() != expected_sha256:
-        raise VaultError(f'Deep verification failed for {pack_file.name}:{member_name}')
+        raise VaultError(f"Deep verification failed for {pack_file.name}:{member_name}")

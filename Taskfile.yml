@@ -259,3 +259,55 @@ tasks:
         fi
         uv run mindcap inspect suno "{{.CLI_ARGS}}"
     silent: true
+
+  vault:ingest:
+    desc: >-
+      Ingest existing provider archives into an immutable vault.
+      Usage: task vault:ingest -- --provider "suno" --source "<source>" --destination "<vault>"
+    cmds:
+      - |
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          printf "%s\n" "Usage: task vault:ingest -- --provider \"suno\" --source \"<source>\" --destination \"<vault>\""
+          exit 1
+        fi
+        uv run mindcap vault ingest {{.CLI_ARGS}}
+    silent: true
+
+  vault:inspect:
+    desc: >-
+      Inspect a Mindcap vault.
+      Usage: task vault:inspect -- --vault "<vault>"
+    cmds:
+      - |
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          printf "%s\n" "Usage: task vault:inspect -- --vault \"<vault>\""
+          exit 1
+        fi
+        uv run mindcap vault inspect {{.CLI_ARGS}}
+    silent: true
+
+  vault:verify:
+    desc: >-
+      Verify a Mindcap vault.
+      Usage: task vault:verify -- --vault "<vault>" [--deep]
+    cmds:
+      - |
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          printf "%s\n" "Usage: task vault:verify -- --vault \"<vault>\" [--deep]"
+          exit 1
+        fi
+        uv run mindcap vault verify {{.CLI_ARGS}}
+    silent: true
+
+  vault:restore:
+    desc: >-
+      Restore one archive unit from a Mindcap vault.
+      Usage: task vault:restore -- --vault "<vault>" --provider "suno" --source-id "<id>" --capture-version "1" --destination "<dest>"
+    cmds:
+      - |
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          printf "%s\n" "Usage: task vault:restore -- --vault \"<vault>\" --provider \"suno\" --source-id \"<id>\" --capture-version \"1\" --destination \"<dest>\""
+          exit 1
+        fi
+        uv run mindcap vault restore {{.CLI_ARGS}}
+    silent: true

@@ -1,25 +1,28 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import shutil
 import zipfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import BinaryIO
+from typing import IO, Any
 
 from mindcap.vault.errors import SourceMutationError, VaultError
-from mindcap.vault.layout import incomplete_dir, pack_path, pack_seal_path, read_json, write_json_atomic
+from mindcap.vault.layout import (
+    incomplete_dir,
+    pack_path,
+    pack_seal_path,
+    read_json,
+    write_json_atomic,
+)
 from mindcap.vault.models import PackIndex, PackObject, PackSeal
 
 _CHUNK_SIZE = 1024 * 1024
 
 
-
 def member_name_for_sha256(digest: str) -> str:
     return f"objects/{digest[:2]}/{digest[2:4]}/{digest}"
-
 
 
 def sha256_file(path: Path) -> str:
@@ -28,7 +31,6 @@ def sha256_file(path: Path) -> str:
         while chunk := handle.read(_CHUNK_SIZE):
             digest.update(chunk)
     return digest.hexdigest()
-
 
 
 def validate_sealed_pack(pack_file: Path, seal: PackSeal) -> None:
@@ -43,7 +45,6 @@ def validate_sealed_pack(pack_file: Path, seal: PackSeal) -> None:
     expected = {item.member_name for item in seal.objects}
     if not expected.issubset(names):
         raise VaultError(f'Pack seal members do not match ZIP contents: "{pack_file}"')
-
 
 
 def load_pack_index(vault_path: Path) -> PackIndex:
@@ -80,7 +81,9 @@ class PackWriter:
         self._current: _OpenPack | None = None
         self._sealed: list[PackSeal] = []
 
-    def add_object(self, source_path: Path, expected_sha256: str, byte_size: int) -> tuple[str, str]:
+    def add_object(
+        self, source_path: Path, expected_sha256: str, byte_size: int
+    ) -> tuple[str, str]:
         if (
             self._current is not None
             and self._current.objects
@@ -151,7 +154,9 @@ class PackWriter:
             objects=tuple(current.objects),
         )
         validate_sealed_pack(current.final_path, seal)
-        write_json_atomic(pack_seal_path(self._vault_path, current.pack_id), seal.to_dict())
+        write_json_atomic(
+            pack_seal_path(self._vault_path, current.pack_id), seal.to_dict()
+        )
         self._sealed.append(seal)
         self._current = None
 
@@ -170,23 +175,31 @@ class PackWriter:
         info.file_size = byte_size
         digest = hashlib.sha256()
         written = 0
-        with source_path.open("rb") as source, archive.open(info, mode="w", force_zip64=True) as target:
+        with (
+            source_path.open("rb") as source,
+            archive.open(info, mode="w", force_zip64=True) as target,
+        ):
             written = _copy_and_hash(source, target, digest)
         stat_after = source_path.stat()
-        if stat_before.st_size != stat_after.st_size or stat_before.st_mtime_ns != stat_after.st_mtime_ns:
-            raise SourceMutationError(f'Source file changed during ingestion: "{source_path}"')
+        if (
+            stat_before.st_size != stat_after.st_size
+            or stat_before.st_mtime_ns != stat_after.st_mtime_ns
+        ):
+            raise SourceMutationError(
+                f'Source file changed during ingestion: "{source_path}"'
+            )
         actual_sha256 = digest.hexdigest()
         if written != byte_size or actual_sha256 != expected_sha256:
-            raise SourceMutationError(f'Source file changed during ingest planning: "{source_path}"')
-
+            raise SourceMutationError(
+                f'Source file changed during ingest planning: "{source_path}"'
+            )
 
 
 def read_pack_seal(path: Path) -> PackSeal:
     return PackSeal.from_dict(read_json(path))
 
 
-
-def _copy_and_hash(source: BinaryIO, target: BinaryIO, digest: hashlib._Hash) -> int:
+def _copy_and_hash(source: IO[bytes], target: IO[bytes], digest: Any) -> int:
     total = 0
     while chunk := source.read(_CHUNK_SIZE):
         target.write(chunk)

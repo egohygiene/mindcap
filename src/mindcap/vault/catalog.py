@@ -7,7 +7,7 @@ from typing import Any
 
 from mindcap.vault.errors import CatalogIntegrityError
 from mindcap.vault.layout import create_staging_directory
-from mindcap.vault.models import CatalogRecord, PackSeal, PlannedArchive, VaultMetadata
+from mindcap.vault.models import PackSeal, PlannedArchive, VaultMetadata
 
 _MIGRATIONS: tuple[tuple[int, str], ...] = (
     (
@@ -62,7 +62,9 @@ _MIGRATIONS: tuple[tuple[int, str], ...] = (
             updated_at TEXT,
             captured_at TEXT,
             payload_json TEXT NOT NULL,
-            FOREIGN KEY(archive_unit_id) REFERENCES archive_units(archive_unit_id) ON DELETE CASCADE
+            FOREIGN KEY(archive_unit_id)
+                REFERENCES archive_units(archive_unit_id)
+                ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS idx_provider_records_lookup
             ON provider_records(provider, record_type, external_id);
@@ -92,7 +94,9 @@ _MIGRATIONS: tuple[tuple[int, str], ...] = (
             object_sha256 TEXT NOT NULL,
             byte_size INTEGER NOT NULL,
             PRIMARY KEY(archive_unit_id, relative_path),
-            FOREIGN KEY(archive_unit_id) REFERENCES archive_units(archive_unit_id) ON DELETE CASCADE,
+            FOREIGN KEY(archive_unit_id)
+                REFERENCES archive_units(archive_unit_id)
+                ON DELETE CASCADE,
             FOREIGN KEY(object_sha256) REFERENCES objects(sha256)
         );
         """,
@@ -111,15 +115,27 @@ def connect_database(path: Path) -> sqlite3.Connection:
 
 
 def apply_migrations(conn: sqlite3.Connection, metadata: VaultMetadata) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version INTEGER PRIMARY KEY,
+            applied_at TEXT NOT NULL
+        )
+        """
+    )
     for version, statement in _MIGRATIONS:
         row = conn.execute(
-            "SELECT 1 FROM schema_migrations WHERE version = ?", (version,)
+            "SELECT 1 FROM schema_migrations WHERE version = ?",
+            (version,),
         ).fetchone()
         if row is not None:
             continue
         conn.executescript(statement)
         conn.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES(?, datetime('now'))",
+            """
+            INSERT INTO schema_migrations(version, applied_at)
+            VALUES(?, datetime('now'))
+            """,
             (version,),
         )
     for key, value in metadata.to_dict().items():
@@ -145,7 +161,7 @@ def prepare_staged_database(
         apply_migrations(conn, vault_metadata)
     finally:
         conn.close()
-    return workdir, staged_db
+    return (workdir, staged_db)
 
 
 
@@ -176,7 +192,9 @@ def load_object_locations(conn: sqlite3.Connection) -> dict[str, tuple[str, str,
 
 
 def next_generation(conn: sqlite3.Connection) -> int:
-    row = conn.execute("SELECT COALESCE(MAX(generation), 0) AS generation FROM catalog_generations").fetchone()
+    row = conn.execute(
+        "SELECT COALESCE(MAX(generation), 0) AS generation FROM catalog_generations"
+    ).fetchone()
     assert row is not None
     return int(row["generation"]) + 1
 
@@ -189,7 +207,10 @@ def insert_generation(
     created_at: str,
 ) -> None:
     conn.execute(
-        "INSERT INTO catalog_generations(generation, previous_generation, created_at) VALUES(?, ?, ?)",
+        """
+        INSERT INTO catalog_generations(generation, previous_generation, created_at)
+        VALUES(?, ?, ?)
+        """,
         (generation, previous_generation, created_at),
     )
 
@@ -209,7 +230,13 @@ def insert_ingestion_run(
     conn.execute(
         """
         INSERT INTO ingestion_runs(
-            run_id, provider, source_label, dry_run, created_at, imported_count, already_present_count
+            run_id,
+            provider,
+            source_label,
+            dry_run,
+            created_at,
+            imported_count,
+            already_present_count
         ) VALUES(?, ?, ?, ?, ?, ?, ?)
         """,
         (
@@ -228,8 +255,14 @@ def insert_ingestion_run(
 def record_pack_seal(conn: sqlite3.Connection, seal: PackSeal) -> None:
     conn.execute(
         """
-        INSERT OR IGNORE INTO packs(pack_id, pack_path, sha256, byte_size, member_count, sealed_at)
-        VALUES(?, ?, ?, ?, ?, ?)
+        INSERT OR IGNORE INTO packs(
+            pack_id,
+            pack_path,
+            sha256,
+            byte_size,
+            member_count,
+            sealed_at
+        ) VALUES(?, ?, ?, ?, ?, ?)
         """,
         (
             seal.pack_id,
@@ -247,21 +280,37 @@ def record_pack_seal(conn: sqlite3.Connection, seal: PackSeal) -> None:
         )
         conn.execute(
             """
-            INSERT OR IGNORE INTO object_locations(object_sha256, pack_id, member_name, byte_size)
-            VALUES(?, ?, ?, ?)
+            INSERT OR IGNORE INTO object_locations(
+                object_sha256,
+                pack_id,
+                member_name,
+                byte_size
+            ) VALUES(?, ?, ?, ?)
             """,
             (item.sha256, seal.pack_id, item.member_name, item.byte_size),
         )
 
 
 
-def insert_archive(conn: sqlite3.Connection, archive: PlannedArchive, run_id: str, imported_at: str) -> None:
+def insert_archive(
+    conn: sqlite3.Connection,
+    archive: PlannedArchive,
+    run_id: str,
+    imported_at: str,
+) -> None:
     cursor = conn.execute(
         """
         INSERT INTO archive_units(
-            provider, source_id, capture_version, title, captured_at, bundle_root,
-            manifest_json, import_run_id, imported_at
-        ) VALUES(?, ?, ?, ?, ?, ?, json(?), ?, ?)
+            provider,
+            source_id,
+            capture_version,
+            title,
+            captured_at,
+            bundle_root,
+            manifest_json,
+            import_run_id,
+            imported_at
+        ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             archive.descriptor.provider,
@@ -275,14 +324,20 @@ def insert_archive(conn: sqlite3.Connection, archive: PlannedArchive, run_id: st
             imported_at,
         ),
     )
+    if cursor.lastrowid is None:
+        raise CatalogIntegrityError("Archive unit insert did not return a row ID.")
     archive_unit_id = int(cursor.lastrowid)
     for record in archive.records:
         insert_provider_record(conn, archive_unit_id, record)
     for file in archive.files:
         conn.execute(
             """
-            INSERT INTO archive_files(archive_unit_id, relative_path, object_sha256, byte_size)
-            VALUES(?, ?, ?, ?)
+            INSERT INTO archive_files(
+                archive_unit_id,
+                relative_path,
+                object_sha256,
+                byte_size
+            ) VALUES(?, ?, ?, ?)
             """,
             (
                 archive_unit_id,
@@ -297,14 +352,22 @@ def insert_archive(conn: sqlite3.Connection, archive: PlannedArchive, run_id: st
 def insert_provider_record(
     conn: sqlite3.Connection,
     archive_unit_id: int,
-    record: CatalogRecord,
+    record: Any,
 ) -> None:
     conn.execute(
         """
         INSERT INTO provider_records(
-            archive_unit_id, provider, record_type, external_id, parent_external_id,
-            title, created_at, updated_at, captured_at, payload_json
-        ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, json(?))
+            archive_unit_id,
+            provider,
+            record_type,
+            external_id,
+            parent_external_id,
+            title,
+            created_at,
+            updated_at,
+            captured_at,
+            payload_json
+        ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             archive_unit_id,
@@ -337,19 +400,29 @@ def summarize(conn: sqlite3.Connection) -> dict[str, Any]:
         "archive_units": "SELECT COUNT(*) FROM archive_units",
         "provider_records": "SELECT COUNT(*) FROM provider_records",
         "logical_bytes": "SELECT COALESCE(SUM(byte_size), 0) FROM archive_files",
-        "physical_bytes": "SELECT COALESCE(SUM(byte_size), 0) FROM packs",
+        "physical_bytes": "SELECT COALESCE(SUM(byte_size), 0) FROM objects",
         "pack_count": "SELECT COUNT(*) FROM packs",
         "object_count": "SELECT COUNT(*) FROM objects",
-        "latest_generation": "SELECT COALESCE(MAX(generation), 0) FROM catalog_generations",
+        "latest_generation": (
+            "SELECT COALESCE(MAX(generation), 0) FROM catalog_generations"
+        ),
     }
     values: dict[str, Any] = {}
     for key, query in queries.items():
         row = conn.execute(query).fetchone()
         values[key] = int(row[0]) if row is not None else 0
-    rows = conn.execute("SELECT DISTINCT provider FROM archive_units ORDER BY provider").fetchall()
+    rows = conn.execute(
+        "SELECT DISTINCT provider FROM archive_units ORDER BY provider"
+    ).fetchall()
     values["providers"] = tuple(str(row[0]) for row in rows)
     last_import = conn.execute(
-        "SELECT created_at FROM ingestion_runs WHERE dry_run = 0 ORDER BY created_at DESC LIMIT 1"
+        """
+        SELECT created_at
+        FROM ingestion_runs
+        WHERE dry_run = 0
+        ORDER BY created_at DESC
+        LIMIT 1
+        """
     ).fetchone()
     values["last_successful_import"] = (
         str(last_import[0]) if last_import is not None else None

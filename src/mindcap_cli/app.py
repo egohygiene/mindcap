@@ -111,7 +111,7 @@ def _fmt_bytes_human(value: int) -> str:
     return f"{size:.1f} TiB"
 
 
-def _vault_service():
+def _vault_service() -> Any:
     from mindcap.vault.service import VaultService
 
     return VaultService()
@@ -1003,21 +1003,32 @@ def inspect_chatgpt(
 @vault_app.command("ingest")
 def vault_ingest(
     provider: Annotated[str, typer.Option("--provider", help="Vault provider name.")],
-    source: Annotated[Path, typer.Option("--source", help="Source bundle or workspace root.")],
+    source: Annotated[
+        Path, typer.Option("--source", help="Source bundle or workspace root.")
+    ],
     destination: Annotated[
         Path, typer.Option("--destination", help="Vault destination directory.")
     ],
     source_label: Annotated[
-        str | None, typer.Option("--source-label", help="Optional human label for the source.")
+        str | None,
+        typer.Option("--source-label", help="Optional human label for the source."),
     ] = None,
     pack_size_mib: Annotated[
-        int, typer.Option("--pack-size-mib", min=1, help="Target immutable pack size in MiB.")
+        int,
+        typer.Option(
+            "--pack-size-mib", min=1, help="Target immutable pack size in MiB."
+        ),
     ] = 512,
     staging_directory: Annotated[
         Path | None,
-        typer.Option("--staging-directory", help="Local staging directory for catalog work."),
+        typer.Option(
+            "--staging-directory", help="Local staging directory for catalog work."
+        ),
     ] = None,
-    dry_run: Annotated[bool, typer.Option("--dry-run", help="Plan an ingestion without writing the vault.")] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Plan an ingestion without writing the vault."),
+    ] = False,
     json_output: Annotated[
         bool, typer.Option("--json", help="Emit machine-readable JSON output.")
     ] = False,
@@ -1047,25 +1058,38 @@ def vault_ingest(
     table.add_row("Planning mode", summary.planning_mode)
     table.add_row("Archive units discovered", str(summary.discovered_archives))
     table.add_row("Archive units imported", str(summary.imported_archives))
-    table.add_row("Archive units already present", str(summary.already_present_archives))
+    table.add_row(
+        "Archive units already present", str(summary.already_present_archives)
+    )
     table.add_row("Files examined", str(summary.files_examined))
     table.add_row("Unique objects added", str(summary.unique_objects_added))
     table.add_row("Objects deduplicated", str(summary.objects_deduplicated))
-    table.add_row("Logical source bytes", _fmt_bytes_human(summary.logical_source_bytes))
-    table.add_row("Physical bytes written", _fmt_bytes_human(summary.physical_bytes_written))
+    table.add_row(
+        "Logical source bytes", _fmt_bytes_human(summary.logical_source_bytes)
+    )
+    table.add_row(
+        "Physical bytes written", _fmt_bytes_human(summary.physical_bytes_written)
+    )
     table.add_row("Pack files created", str(summary.pack_files_created))
     table.add_row(
         "Catalog generation published",
-        str(summary.catalog_generation_published) if summary.catalog_generation_published is not None else "none",
+        str(summary.catalog_generation_published)
+        if summary.catalog_generation_published is not None
+        else "none",
     )
     table.add_row(
         "Import receipt path",
-        str(summary.import_receipt_path) if summary.import_receipt_path is not None else "none",
+        str(summary.import_receipt_path)
+        if summary.import_receipt_path is not None
+        else "none",
     )
-    table.add_row("Source data modified or deleted", summary.source_data_modified_or_deleted)
+    table.add_row(
+        "Source data modified or deleted", summary.source_data_modified_or_deleted
+    )
     console.print(table)
-    console.print()
-    console.print(f"[yellow]Warning:[/yellow] {summary.warning}")
+    if summary.warning:
+        console.print()
+        console.print(f"[yellow]Warning:[/yellow] {summary.warning}")
 
 
 @vault_app.command("inspect")
@@ -1092,14 +1116,21 @@ def vault_inspect(
     table.add_row("Format", f"{summary.format} (v{summary.format_version})")
     table.add_row(
         "Latest valid catalog generation",
-        str(summary.latest_generation) if summary.latest_generation is not None else "none",
+        str(summary.latest_generation)
+        if summary.latest_generation is not None
+        else "none",
     )
-    table.add_row("Imported providers", ", ".join(summary.providers) if summary.providers else "none")
+    table.add_row(
+        "Imported providers",
+        ", ".join(summary.providers) if summary.providers else "none",
+    )
     table.add_row("Archive units", str(summary.archive_units))
     table.add_row("Provider records", str(summary.provider_records))
     table.add_row("Logical bytes", _fmt_bytes_human(summary.logical_bytes))
     table.add_row("Physical bytes", _fmt_bytes_human(summary.physical_bytes))
-    table.add_row("Deduplicated bytes saved", _fmt_bytes_human(summary.deduplicated_bytes_saved))
+    table.add_row(
+        "Deduplicated bytes saved", _fmt_bytes_human(summary.deduplicated_bytes_saved)
+    )
     table.add_row("Pack count", str(summary.pack_count))
     table.add_row("Incomplete artifacts", str(len(summary.incomplete_artifacts)))
     table.add_row("Orphaned sealed packs", str(len(summary.orphaned_sealed_packs)))
@@ -1111,7 +1142,10 @@ def vault_inspect(
 @vault_app.command("verify")
 def vault_verify(
     vault: Annotated[Path, typer.Option("--vault", help="Vault directory to verify.")],
-    deep: Annotated[bool, typer.Option("--deep", help="Read every stored object and verify SHA-256.")] = False,
+    deep: Annotated[
+        bool,
+        typer.Option("--deep", help="Read every stored object and verify SHA-256."),
+    ] = False,
     json_output: Annotated[
         bool, typer.Option("--json", help="Emit machine-readable JSON output.")
     ] = False,
@@ -1134,7 +1168,12 @@ def vault_verify(
     table = Table(title="Mindcap Vault Verify", show_header=False)
     table.add_column("Field", style="bold")
     table.add_column("Value")
-    table.add_row("Latest generation", str(summary.latest_generation) if summary.latest_generation is not None else "none")
+    table.add_row(
+        "Latest generation",
+        str(summary.latest_generation)
+        if summary.latest_generation is not None
+        else "none",
+    )
     table.add_row("Archive units", str(summary.archive_units))
     table.add_row("Packs", str(summary.pack_count))
     table.add_row("Objects", str(summary.object_count))
@@ -1143,19 +1182,34 @@ def vault_verify(
     console.print(table)
     console.print()
     console.print("[bold green]PASS[/bold green]")
-    console.print("[yellow]Warning:[/yellow] Successful filesystem verification does not confirm that a Google Drive client has finished remote synchronization.")
+    console.print(
+        "[yellow]Warning:[/yellow] Successful filesystem verification does "
+        "not confirm that a Google Drive client has finished remote "
+        "synchronization."
+    )
 
 
 @vault_app.command("restore")
 def vault_restore(
-    vault: Annotated[Path, typer.Option("--vault", help="Vault directory to restore from.")],
-    provider: Annotated[str, typer.Option("--provider", help="Provider name.")],
-    source_id: Annotated[str, typer.Option("--source-id", help="Stable provider source ID.")],
-    capture_version: Annotated[str, typer.Option("--capture-version", help="Capture version to restore.")],
-    destination: Annotated[
-        Path, typer.Option("--destination", help="Destination directory for the restored bundle.")
+    vault: Annotated[
+        Path, typer.Option("--vault", help="Vault directory to restore from.")
     ],
-    overwrite: Annotated[bool, typer.Option("--overwrite", help="Allow overwriting existing files.")] = False,
+    provider: Annotated[str, typer.Option("--provider", help="Provider name.")],
+    source_id: Annotated[
+        str, typer.Option("--source-id", help="Stable provider source ID.")
+    ],
+    capture_version: Annotated[
+        str, typer.Option("--capture-version", help="Capture version to restore.")
+    ],
+    destination: Annotated[
+        Path,
+        typer.Option(
+            "--destination", help="Destination directory for the restored bundle."
+        ),
+    ],
+    overwrite: Annotated[
+        bool, typer.Option("--overwrite", help="Allow overwriting existing files.")
+    ] = False,
     json_output: Annotated[
         bool, typer.Option("--json", help="Emit machine-readable JSON output.")
     ] = False,

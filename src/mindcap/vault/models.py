@@ -23,7 +23,7 @@ class VaultMetadata:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, value: dict[str, Any]) -> "VaultMetadata":
+    def from_dict(cls, value: dict[str, Any]) -> VaultMetadata:
         return cls(
             vault_id=str(value["vault_id"]),
             format=str(value["format"]),
@@ -117,7 +117,7 @@ class PackSeal:
         }
 
     @classmethod
-    def from_dict(cls, value: dict[str, Any]) -> "PackSeal":
+    def from_dict(cls, value: dict[str, Any]) -> PackSeal:
         objects = tuple(
             PackObject(
                 sha256=str(item["sha256"]),
@@ -153,7 +153,7 @@ class CatalogSeal:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, value: dict[str, Any]) -> "CatalogSeal":
+    def from_dict(cls, value: dict[str, Any]) -> CatalogSeal:
         return cls(
             schema=str(value["schema"]),
             generation=int(value["generation"]),

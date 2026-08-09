@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +17,7 @@ _SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules"}
 class SunoVaultArchiveAdapter:
     provider = "suno"
 
-    def discover(self, source: Path):
+    def discover(self, source: Path) -> Iterator[Path]:
         source = source.expanduser().resolve()
         if _looks_like_bundle(source):
             yield source
@@ -28,10 +29,11 @@ class SunoVaultArchiveAdapter:
                 if name not in _SKIP_DIRS and not Path(root, name).is_symlink()
             ]
             path = Path(root)
-            if {"manifest.json", "checksums.json"}.issubset(filenames):
-                if _looks_like_bundle(path):
-                    yield path
-                    dirnames[:] = []
+            if {"manifest.json", "checksums.json"}.issubset(
+                filenames
+            ) and _looks_like_bundle(path):
+                yield path
+                dirnames[:] = []
 
     def validate(self, bundle: Path) -> None:
         verify_workspace_bundle(bundle)
@@ -40,7 +42,9 @@ class SunoVaultArchiveAdapter:
         manifest = _read_json(bundle / "manifest.json")
         provider = str(manifest.get("provider") or "")
         if provider != self.provider:
-            raise VerificationError(f'Unsupported provider in bundle manifest: "{provider}"')
+            raise VerificationError(
+                f'Unsupported provider in bundle manifest: "{provider}"'
+            )
         source_id = str(manifest.get("source_id") or "")
         capture_version = str(manifest.get("capture_version") or "")
         if not source_id or not capture_version:
@@ -55,7 +59,7 @@ class SunoVaultArchiveAdapter:
             manifest=manifest,
         )
 
-    def iter_files(self, bundle: Path):
+    def iter_files(self, bundle: Path) -> Iterator[ArchiveFile]:
         bundle = bundle.resolve()
         for path in sorted(bundle.rglob("*")):
             if not path.is_file():
@@ -67,7 +71,7 @@ class SunoVaultArchiveAdapter:
                 byte_size=path.stat().st_size,
             )
 
-    def iter_records(self, bundle: Path):
+    def iter_records(self, bundle: Path) -> Iterator[CatalogRecord]:
         descriptor = self.describe(bundle)
         workspace_metadata = _read_json(bundle / "workspace" / "metadata.json")
         yield CatalogRecord(
@@ -75,8 +79,7 @@ class SunoVaultArchiveAdapter:
             record_type="workspace",
             external_id=descriptor.source_id,
             parent_external_id=None,
-            title=_optional_string(workspace_metadata.get("title"))
-            or descriptor.title,
+            title=_optional_string(workspace_metadata.get("title")) or descriptor.title,
             created_at=_optional_string(workspace_metadata.get("created_at")),
             updated_at=_optional_string(workspace_metadata.get("updated_at")),
             captured_at=descriptor.captured_at,
@@ -111,7 +114,6 @@ class SunoVaultArchiveAdapter:
                 )
 
 
-
 def _looks_like_bundle(path: Path) -> bool:
     if not path.is_dir():
         return False
@@ -120,13 +122,11 @@ def _looks_like_bundle(path: Path) -> bool:
     return manifest_path.is_file() and checksums_path.is_file()
 
 
-
 def _read_json(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
         raise VerificationError(f'Expected a JSON object: "{path}"')
     return value
-
 
 
 def _optional_string(value: object) -> str | None:

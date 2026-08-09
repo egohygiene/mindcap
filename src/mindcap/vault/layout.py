@@ -7,7 +7,12 @@ from tempfile import mkdtemp
 from typing import Any
 
 from mindcap.vault.errors import UnsupportedVaultFormatError, VaultError
-from mindcap.vault.models import FORMAT_ID, FORMAT_VERSION, HASH_ALGORITHM, VaultMetadata
+from mindcap.vault.models import (
+    FORMAT_ID,
+    FORMAT_VERSION,
+    HASH_ALGORITHM,
+    VaultMetadata,
+)
 
 
 def safe_relative_path(value: str) -> str:
@@ -20,60 +25,48 @@ def safe_relative_path(value: str) -> str:
     return normalized
 
 
-
 def vault_metadata_path(vault_path: Path) -> Path:
     return vault_path / "vault.json"
-
 
 
 def catalog_generations_dir(vault_path: Path) -> Path:
     return vault_path / "catalog" / "generations"
 
 
-
 def catalog_path(vault_path: Path, generation: int) -> Path:
     return catalog_generations_dir(vault_path) / f"catalog-{generation:08d}.sqlite3"
-
 
 
 def catalog_seal_path(vault_path: Path, generation: int) -> Path:
     return catalog_generations_dir(vault_path) / f"catalog-{generation:08d}.seal.json"
 
 
-
 def packs_dir(vault_path: Path) -> Path:
     return vault_path / "packs"
-
 
 
 def pack_path(vault_path: Path, pack_id: str) -> Path:
     return packs_dir(vault_path) / f"{pack_id}.zip"
 
 
-
 def pack_seal_path(vault_path: Path, pack_id: str) -> Path:
     return packs_dir(vault_path) / f"{pack_id}.seal.json"
-
 
 
 def imports_dir(vault_path: Path) -> Path:
     return vault_path / "imports"
 
 
-
 def reports_dir(vault_path: Path) -> Path:
     return vault_path / "reports"
-
 
 
 def incomplete_dir(vault_path: Path) -> Path:
     return vault_path / "incomplete"
 
 
-
 def writer_lock_path(vault_path: Path) -> Path:
     return incomplete_dir(vault_path) / "writer.lock.json"
-
 
 
 def ensure_vault_layout(vault_path: Path) -> None:
@@ -87,7 +80,6 @@ def ensure_vault_layout(vault_path: Path) -> None:
         path.mkdir(parents=True, exist_ok=True)
 
 
-
 def write_json_atomic(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -98,13 +90,11 @@ def write_json_atomic(path: Path, value: dict[str, Any]) -> None:
     temporary.replace(path)
 
 
-
 def read_json(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
         raise VaultError(f'Expected a JSON object in "{path}".')
     return value
-
 
 
 def initialize_vault(
@@ -130,7 +120,6 @@ def initialize_vault(
     return metadata
 
 
-
 def load_vault_metadata(vault_path: Path) -> VaultMetadata:
     metadata_path = vault_metadata_path(vault_path)
     if not metadata_path.is_file():
@@ -147,7 +136,6 @@ def load_vault_metadata(vault_path: Path) -> VaultMetadata:
     return metadata
 
 
-
 def list_catalog_generations(vault_path: Path) -> list[int]:
     generations: list[int] = []
     for path in catalog_generations_dir(vault_path).glob("catalog-*.sqlite3"):
@@ -157,7 +145,6 @@ def list_catalog_generations(vault_path: Path) -> list[int]:
         except (IndexError, ValueError):
             continue
     return sorted(generations)
-
 
 
 def list_incomplete_artifacts(vault_path: Path) -> tuple[str, ...]:
@@ -170,7 +157,6 @@ def list_incomplete_artifacts(vault_path: Path) -> tuple[str, ...]:
         if path.is_file() and path.name != writer_lock_path(vault_path).name
     ]
     return tuple(artifacts)
-
 
 
 def create_staging_directory(base: Path | None = None) -> Path:

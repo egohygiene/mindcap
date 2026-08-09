@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import os
 import shutil
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Iterator, cast
+from typing import Any, cast
 
 from mindcap.registry import build_registry
 from mindcap.vault import catalog
@@ -31,13 +32,18 @@ from mindcap.vault.layout import (
 )
 from mindcap.vault.models import (
     ArchiveDescriptor,
+    CatalogSeal,
     IngestSummary,
     InspectSummary,
     LockInfo,
+    PackSeal,
     PlannedArchive,
     PlannedFile,
+    RestoreSummary,
+    VaultMetadata,
+    VerifySummary,
 )
-from mindcap.vault.packs import PackSeal, PackWriter, load_pack_index, sha256_file
+from mindcap.vault.packs import PackWriter, load_pack_index, sha256_file
 from mindcap.vault.protocols import VaultArchiveAdapter
 from mindcap.vault.receipts import new_run_id, write_import_receipt
 from mindcap.vault.restore import restore_archive_unit
@@ -70,12 +76,18 @@ class VaultService:
         self._validate_preflight(source, destination)
         adapter = self._adapter_for(provider)
         created_at = datetime.now(UTC).isoformat()
-        lock_context = self._writer_lock(destination) if not dry_run else _null_context()
+        lock_context = (
+            self._writer_lock(destination) if not dry_run else _null_context()
+        )
         with lock_context:
+            has_existing_metadata = vault_metadata_path(destination).exists()
             metadata = self._load_or_initialize_metadata(
                 destination, provider=provider, created_at=created_at, dry_run=dry_run
             )
-            generation, latest_catalog, _seal = self._latest_catalog(destination)
+            if has_existing_metadata:
+                generation, latest_catalog, _seal = self._latest_catalog(destination)
+            else:
+                generation, latest_catalog, _seal = (None, None, None)
             existing_units: set[tuple[str, str, str]] = set()
             existing_locations: dict[str, tuple[str, str, int]] = {}
             if latest_catalog is not None:
@@ -85,14 +97,20 @@ class VaultService:
                     existing_locations = catalog.load_object_locations(conn)
                 finally:
                     conn.close()
-            pack_index = load_pack_index(destination) if vault_metadata_path(destination).exists() else None
+            pack_index = (
+                load_pack_index(destination)
+                if vault_metadata_path(destination).exists()
+                else None
+            )
             reusable_locations = dict(existing_locations)
             reusable_pack_seals: dict[str, PackSeal] = {}
             if pack_index is not None:
                 for digest, location in pack_index.object_locations.items():
                     reusable_locations.setdefault(digest, location)
                 reusable_pack_seals = dict(pack_index.pack_seals)
-            discovered_paths = sorted(path.resolve() for path in adapter.discover(source))
+            discovered_paths = sorted(
+                path.resolve() for path in adapter.discover(source)
+            )
             planned_archives: list[PlannedArchive] = []
             discovered = 0
             already_present = 0
@@ -113,7 +131,10 @@ class VaultService:
                     digest, byte_size = hash_source_file(archive_file.absolute_path)
                     files_examined += 1
                     logical_bytes += byte_size
-                    needs_write = digest not in reusable_locations and digest not in unique_objects
+                    needs_write = (
+                        digest not in reusable_locations
+                        and digest not in unique_objects
+                    )
                     if digest in reusable_locations or digest in unique_objects:
                         objects_deduplicated += 1
                     else:
@@ -141,7 +162,7 @@ class VaultService:
                     dry_run=dry_run,
                     planning_mode="exact",
                     discovered_archives=discovered,
-                    imported_archives=0 if dry_run else 0,
+                    imported_archives=0,
                     already_present_archives=already_present,
                     files_examined=files_examined,
                     unique_objects_added=len(unique_objects),
@@ -161,7 +182,9 @@ class VaultService:
             created_pack_seals: tuple[PackSeal, ...] = ()
             if unique_objects:
                 for digest, (path, byte_size) in sorted(unique_objects.items()):
-                    pack_id, member_name = pack_writer.add_object(path, digest, byte_size)
+                    pack_id, member_name = pack_writer.add_object(
+                        path, digest, byte_size
+                    )
                     reusable_locations[digest] = (pack_id, member_name, byte_size)
                 created_pack_seals = pack_writer.finish()
             published_generation: int | None = None
@@ -176,7 +199,9 @@ class VaultService:
                 conn = catalog.connect_database(staged_db)
                 try:
                     new_generation = catalog.next_generation(conn)
-                    catalog.insert_generation(conn, new_generation, generation, created_at)
+                    catalog.insert_generation(
+                        conn, new_generation, generation, created_at
+                    )
                     catalog.insert_ingestion_run(
                         conn,
                         run_id=run_id,
@@ -269,7 +294,9 @@ class VaultService:
                 unique_objects_added=len(unique_objects),
                 objects_deduplicated=objects_deduplicated,
                 logical_source_bytes=logical_bytes,
-                physical_bytes_written=sum(seal.byte_size for seal in created_pack_seals),
+                physical_bytes_written=sum(
+                    seal.byte_size for seal in created_pack_seals
+                ),
                 pack_files_created=len(created_pack_seals),
                 catalog_generation_published=published_generation,
                 import_receipt_path=receipt_path,
@@ -302,7 +329,9 @@ class VaultService:
         conn = catalog.connect_database(latest_catalog)
         try:
             summary = catalog.summarize(conn)
-            pack_rows = conn.execute("SELECT pack_id FROM packs ORDER BY pack_id").fetchall()
+            pack_rows = conn.execute(
+                "SELECT pack_id FROM packs ORDER BY pack_id"
+            ).fetchall()
             pack_ids = {str(row["pack_id"]) for row in pack_rows}
         finally:
             conn.close()
@@ -329,7 +358,7 @@ class VaultService:
             verification_status="valid",
         )
 
-    def verify(self, vault_path: Path, *, deep: bool = False):
+    def verify(self, vault_path: Path, *, deep: bool = False) -> VerifySummary:
         return verify_vault(vault_path.expanduser().resolve(), deep=deep)
 
     def restore(
@@ -341,7 +370,7 @@ class VaultService:
         capture_version: str,
         destination: Path,
         overwrite: bool = False,
-    ):
+    ) -> RestoreSummary:
         summary = restore_archive_unit(
             vault_path=vault_path.expanduser().resolve(),
             provider=provider,
@@ -372,7 +401,9 @@ class VaultService:
         adapter = cast(VaultArchiveAdapter, adapter_factory())
         return adapter
 
-    def _latest_catalog(self, vault_path: Path) -> tuple[int | None, Path | None, Any | None]:
+    def _latest_catalog(
+        self, vault_path: Path
+    ) -> tuple[int | None, Path | None, CatalogSeal | None]:
         return load_latest_valid_catalog(vault_path)
 
     def _load_or_initialize_metadata(
@@ -382,12 +413,25 @@ class VaultService:
         provider: str,
         created_at: str,
         dry_run: bool,
-    ):
+    ) -> VaultMetadata:
         if vault_metadata_path(destination).exists():
             return load_vault_metadata(destination)
         if dry_run:
-            ensure_vault_layout(destination)
-            return initialize_vault(destination, provider=provider, created_at=created_at)
+            from mindcap.vault.models import (
+                FORMAT_ID,
+                FORMAT_VERSION,
+                HASH_ALGORITHM,
+                VaultMetadata,
+            )
+
+            return VaultMetadata(
+                vault_id="dry-run",
+                format=FORMAT_ID,
+                format_version=FORMAT_VERSION,
+                created_at=created_at,
+                hashing_algorithm=HASH_ALGORITHM,
+                provider=provider,
+            )
         return initialize_vault(destination, provider=provider, created_at=created_at)
 
     def _validate_preflight(self, source: Path, destination: Path) -> None:
@@ -409,7 +453,9 @@ class VaultService:
         created_at: str,
     ) -> int:
         target = catalog_path(vault_path, generation)
-        temporary = incomplete_dir(vault_path) / f"catalog-{generation:08d}.partial.sqlite3"
+        temporary = (
+            incomplete_dir(vault_path) / f"catalog-{generation:08d}.partial.sqlite3"
+        )
         temporary.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(staged_db, temporary)
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -444,9 +490,12 @@ class VaultService:
             existing = self._read_lock_info(lock_path)
             if existing is not None and self._is_stale(existing):
                 raise StaleVaultLockError(
-                    "A stale vault writer lock was found. Recover it explicitly before retrying."
+                    "A stale vault writer lock was found. Recover it explicitly "
+                    "before retrying."
                 ) from error
-            raise VaultLockError("Another writer already owns the vault lock.") from error
+            raise VaultLockError(
+                "Another writer already owns the vault lock."
+            ) from error
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             import json
 
@@ -472,13 +521,17 @@ class VaultService:
         if not isinstance(created_at, str) or not isinstance(owner, str):
             return None
         pid = payload.get("pid")
-        return LockInfo(owner=owner, created_at=created_at, pid=int(pid) if pid else None)
+        return LockInfo(
+            owner=owner, created_at=created_at, pid=int(pid) if pid else None
+        )
 
     def _is_stale(self, info: LockInfo) -> bool:
         try:
             created_at = datetime.fromisoformat(info.created_at)
         except ValueError as error:
-            raise UnsupportedVaultFormatError("Invalid writer lock timestamp.") from error
+            raise UnsupportedVaultFormatError(
+                "Invalid writer lock timestamp."
+            ) from error
         return datetime.now(UTC) - created_at >= self._stale_lock_timeout
 
 

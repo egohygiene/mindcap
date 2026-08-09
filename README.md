@@ -127,6 +127,41 @@ Capture a workspace archive using a placeholder workspace UUID:
 uv run mindcap capture suno "00000000-0000-0000-0000-000000000000"
 ```
 
+## Vault Ingestion and Verification
+
+Mindcap can ingest finalized Suno workspace bundles into an immutable vault made of sealed SQLite catalog generations and ZIP64 pack files. Example:
+
+```bash
+uv run mindcap vault ingest \
+  --provider "suno" \
+  --source ".cache/mindcap/workspaces/suno" \
+  --destination "/tmp/Drive Path With Spaces/suno.mindcap-vault"
+
+uv run mindcap vault inspect \
+  --vault "/tmp/Drive Path With Spaces/suno.mindcap-vault"
+
+uv run mindcap vault verify \
+  --vault "/tmp/Drive Path With Spaces/suno.mindcap-vault" \
+  --deep
+```
+
+Restore one capture by stable archive identity:
+
+```bash
+uv run mindcap vault restore \
+  --vault "/tmp/Drive Path With Spaces/suno.mindcap-vault" \
+  --provider "suno" \
+  --source-id "suno-00000000-0000-0000-0000-000000000000" \
+  --capture-version "1" \
+  --destination "/tmp/mindcap-restore"
+```
+
+> [!IMPORTANT]
+> A synced Google Drive copy is not automatically a complete backup strategy.
+> Wait for Drive synchronization to finish independently, run deep verification,
+> and prove that restoration works before considering any local deletion. This
+> issue does not implement deletion or pruning.
+
 ## DistroKid Library and Release Capture
 
 Authenticate using a dedicated DistroKid browser profile:

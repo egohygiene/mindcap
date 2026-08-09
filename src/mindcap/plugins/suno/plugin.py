@@ -58,7 +58,7 @@ class SunoPlugin:
     def storage(self) -> SunoWorkspaceStorageStrategy:
         return SunoWorkspaceStorageStrategy()
 
-    def vault_adapter(self):
+    def vault_adapter(self) -> object:
         from mindcap.plugins.suno.archive.vault import SunoVaultArchiveAdapter
 
         return SunoVaultArchiveAdapter()

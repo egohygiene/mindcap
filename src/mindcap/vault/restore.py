@@ -14,7 +14,6 @@ from mindcap.vault.verifier import load_latest_valid_catalog
 _CHUNK_SIZE = 1024 * 1024
 
 
-
 def restore_archive_unit(
     *,
     vault_path: Path,
@@ -46,7 +45,12 @@ def restore_archive_unit(
         target_root.mkdir(parents=True, exist_ok=True)
         rows = conn.execute(
             """
-            SELECT af.relative_path, af.object_sha256, af.byte_size, p.pack_path, ol.member_name
+            SELECT
+                af.relative_path,
+                af.object_sha256,
+                af.byte_size,
+                p.pack_path,
+                ol.member_name
             FROM archive_files af
             JOIN object_locations ol ON ol.object_sha256 = af.object_sha256
             JOIN packs p ON p.pack_id = ol.pack_id
@@ -97,7 +101,6 @@ def restore_archive_unit(
     )
 
 
-
 def _secure_join(root: Path, relative_path: str) -> Path:
     candidate = (root / Path(relative_path)).resolve()
     resolved_root = root.resolve()
@@ -106,7 +109,6 @@ def _secure_join(root: Path, relative_path: str) -> Path:
             f'Restore path escaped destination root: "{relative_path}"'
         )
     return candidate
-
 
 
 def _extract_verified_object(
@@ -119,11 +121,14 @@ def _extract_verified_object(
 ) -> None:
     digest = hashlib.sha256()
     total = 0
-    with zipfile.ZipFile(pack_file, "r") as archive:
-        with archive.open(member_name, "r") as source, output_path.open("wb") as target:
-            while chunk := source.read(_CHUNK_SIZE):
-                target.write(chunk)
-                digest.update(chunk)
-                total += len(chunk)
+    with (
+        zipfile.ZipFile(pack_file, "r") as archive,
+        archive.open(member_name, "r") as source,
+        output_path.open("wb") as target,
+    ):
+        while chunk := source.read(_CHUNK_SIZE):
+            target.write(chunk)
+            digest.update(chunk)
+            total += len(chunk)
     if total != expected_size or digest.hexdigest() != expected_sha256:
         raise VaultError(f'Restored object hash mismatch for "{member_name}"')
