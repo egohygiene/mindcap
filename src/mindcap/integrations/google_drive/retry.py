@@ -16,5 +16,5 @@ def classify_google_error(status_code: int, reason: str | None = None) -> RetryD
     if status_code in RETRYABLE_STATUS_CODES:
         return RetryDecision(retryable=True, reason=f"http_{status_code}")
     if status_code == 403 and reason in RETRYABLE_403_REASONS:
-        return RetryDecision(retryable=True, reason=reason or "rate_limit")
+        return RetryDecision(retryable=True, reason=reason)
     return RetryDecision(retryable=False, reason=reason or f"http_{status_code}")

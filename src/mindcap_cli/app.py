@@ -1103,29 +1103,38 @@ def vault_create(
             "locator": str(locator.path),
             "verification": "initialized",
         }
+        if json_output:
+            console.print_json(data=payload)
+            return
+        table = Table(title="Mindcap Vault Create", show_header=False)
+        table.add_column("Field", style="bold")
+        table.add_column("Value")
+        table.add_row("Backend", payload["backend"])
+        table.add_row("Vault ID", payload["vault_id"])
+        table.add_row("Locator", payload["locator"])
+        table.add_row("Verification", payload["verification"])
+        console.print(table)
+        return
     elif backend == "google-drive":
-        _ = name
+        if not name:
+            _fail(
+                ValueError(
+                    "Pass --name when creating a Google Drive-backed vault "
+                    "(for example: --name \"suno.mindcap-vault\")."
+                )
+            )
+            return
         _fail(
             ValueError(
-                "Native Google Drive vault creation is available only through the "
-                "Google Drive artifact-store backend implementation."
+                "Google Drive vault creation is not available in this build yet. "
+                "Use `task google-drive:auth`, then `task google-drive:doctor`, "
+                "and rerun once the backend is enabled."
             )
         )
         return
     else:
         _fail(ValueError(f'Unsupported storage backend: "{storage_backend}"'))
-        return
-    if json_output:
-        console.print_json(data=payload)
-        return
-    table = Table(title="Mindcap Vault Create", show_header=False)
-    table.add_column("Field", style="bold")
-    table.add_column("Value")
-    table.add_row("Backend", payload["backend"])
-    table.add_row("Vault ID", payload["vault_id"])
-    table.add_row("Locator", payload["locator"])
-    table.add_row("Verification", payload["verification"])
-    console.print(table)
+    return
 
 
 @vault_app.command("ingest")

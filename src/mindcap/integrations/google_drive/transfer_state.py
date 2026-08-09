@@ -33,11 +33,9 @@ def _state_path(root: Path, artifact_id: str) -> Path:
 def write_transfer_state(root: Path, state: ResumableTransferState) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     path = _state_path(root, state.artifact_id)
-    path.write_text(
-        json.dumps(asdict(state), indent=2, sort_keys=True),
-        encoding="utf-8",
-    )
-    os.chmod(path, 0o600)
+    fd = os.open(path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(json.dumps(asdict(state), indent=2, sort_keys=True))
     return path
 
 
