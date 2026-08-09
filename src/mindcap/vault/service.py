@@ -10,6 +10,10 @@ from typing import Any, cast
 
 from mindcap.registry import build_registry
 from mindcap.vault import catalog
+from mindcap.vault.backends import (
+    GoogleDriveVaultLocator,
+    parse_vault_locator,
+)
 from mindcap.vault.errors import (
     StaleVaultLockError,
     UnsupportedVaultFormatError,
@@ -65,14 +69,21 @@ class VaultService:
         *,
         provider: str,
         source: Path,
-        destination: Path,
+        destination: Path | str,
         source_label: str | None = None,
         pack_size_mib: int = 512,
         staging_directory: Path | None = None,
         dry_run: bool = False,
     ) -> IngestSummary:
         source = source.expanduser().resolve()
-        destination = destination.expanduser().resolve()
+        destination_locator = parse_vault_locator(destination)
+        if isinstance(destination_locator, GoogleDriveVaultLocator):
+            raise VaultError(
+                "Google Drive vault ingest is not yet wired in this command path. "
+                "Use a filesystem vault path or run `mindcap vault create "
+                "--storage-backend google-drive` first."
+            )
+        destination = destination_locator.path
         self._validate_preflight(source, destination)
         adapter = self._adapter_for(provider)
         created_at = datetime.now(UTC).isoformat()
@@ -302,8 +313,13 @@ class VaultService:
                 import_receipt_path=receipt_path,
             )
 
-    def inspect(self, vault_path: Path) -> InspectSummary:
-        vault_path = vault_path.expanduser().resolve()
+    def inspect(self, vault_path: Path | str) -> InspectSummary:
+        vault_locator = parse_vault_locator(vault_path)
+        if isinstance(vault_locator, GoogleDriveVaultLocator):
+            raise VaultError(
+                "Google Drive vault inspection is not yet wired in this command path."
+            )
+        vault_path = vault_locator.path
         metadata = load_vault_metadata(vault_path)
         generation, latest_catalog, _seal = self._latest_catalog(vault_path)
         incomplete = list_incomplete_artifacts(vault_path)
@@ -358,21 +374,31 @@ class VaultService:
             verification_status="valid",
         )
 
-    def verify(self, vault_path: Path, *, deep: bool = False) -> VerifySummary:
-        return verify_vault(vault_path.expanduser().resolve(), deep=deep)
+    def verify(self, vault_path: Path | str, *, deep: bool = False) -> VerifySummary:
+        vault_locator = parse_vault_locator(vault_path)
+        if isinstance(vault_locator, GoogleDriveVaultLocator):
+            raise VaultError(
+                "Google Drive vault verification is not yet wired in this command path."
+            )
+        return verify_vault(vault_locator.path, deep=deep)
 
     def restore(
         self,
         *,
-        vault_path: Path,
+        vault_path: Path | str,
         provider: str,
         source_id: str,
         capture_version: str,
         destination: Path,
         overwrite: bool = False,
     ) -> RestoreSummary:
+        vault_locator = parse_vault_locator(vault_path)
+        if isinstance(vault_locator, GoogleDriveVaultLocator):
+            raise VaultError(
+                "Google Drive vault restoration is not yet wired in this command path."
+            )
         summary = restore_archive_unit(
-            vault_path=vault_path.expanduser().resolve(),
+            vault_path=vault_locator.path,
             provider=provider,
             source_id=source_id,
             capture_version=capture_version,
@@ -384,7 +410,10 @@ class VaultService:
         return summary
 
     def recover_stale_lock(self, vault_path: Path) -> None:
-        lock_path = writer_lock_path(vault_path)
+        locator = parse_vault_locator(vault_path)
+        if isinstance(locator, GoogleDriveVaultLocator):
+            raise VaultError("Google Drive vault locks do not use local lock files.")
+        lock_path = writer_lock_path(locator.path)
         info = self._read_lock_info(lock_path)
         if info is None:
             return

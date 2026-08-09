@@ -260,6 +260,34 @@ tasks:
         uv run mindcap inspect suno "{{.CLI_ARGS}}"
     silent: true
 
+  google-drive:auth:
+    desc: Authenticate Google Drive OAuth configuration for vault storage.
+    cmds:
+      - |
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          printf "%s\n" "Usage: task google-drive:auth -- --client-secrets-file \"/path/to/client_secret.json\""
+          exit 1
+        fi
+        uv run mindcap auth google-drive {{.CLI_ARGS}}
+    silent: true
+
+  google-drive:doctor:
+    desc: Run Google Drive diagnostics.
+    cmds:
+      - uv run mindcap doctor google-drive {{.CLI_ARGS}}
+    silent: true
+
+  vault:create:google-drive:
+    desc: Create a Google Drive-backed vault destination.
+    cmds:
+      - |
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          printf "%s\n" "Usage: task vault:create:google-drive -- --name \"suno.mindcap-vault\""
+          exit 1
+        fi
+        uv run mindcap vault create --storage-backend "google-drive" {{.CLI_ARGS}}
+    silent: true
+
   vault:ingest:
     desc: >-
       Ingest existing provider archives into an immutable vault.

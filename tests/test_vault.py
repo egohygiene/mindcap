@@ -448,6 +448,12 @@ def test_taskfile_vault_tasks_forward_cli_args_without_wrapping() -> None:
     taskfile = Path(__file__).resolve().parents[1] / "Taskfile.yml"
     text = taskfile.read_text(encoding="utf-8")
 
+    assert "uv run mindcap auth google-drive {{.CLI_ARGS}}" in text
+    assert "uv run mindcap doctor google-drive {{.CLI_ARGS}}" in text
+    assert (
+        'uv run mindcap vault create --storage-backend "google-drive" {{.CLI_ARGS}}'
+        in text
+    )
     assert "uv run mindcap vault ingest {{.CLI_ARGS}}" in text
     assert "uv run mindcap vault inspect {{.CLI_ARGS}}" in text
     assert "uv run mindcap vault verify {{.CLI_ARGS}}" in text

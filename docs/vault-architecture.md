@@ -88,6 +88,20 @@ Before considering any local deletion, users must run deep verification and a re
 
 Providers opt into vault ingestion by supplying a `VaultArchiveAdapter` from the existing plugin registry. The generic vault subsystem does not import provider implementations directly.
 
+## Storage backend boundary (ADR)
+
+Vault artifact construction remains local and deterministic, while durable
+publication is delegated to a backend contract under `mindcap.vault.backends`.
+
+- `filesystem` locators remain native local paths.
+- `google-drive` locators are canonical `gdrive://<folder-id>` identifiers.
+- Core vault orchestration does not import Google Drive integration modules
+  directly; integration details stay under
+  `mindcap.integrations.google_drive`.
+
+This preserves the vault format and enables resumable remote backends without
+forcing provider plugins or core catalog logic to become backend-specific.
+
 ## Capacity and operational guidance
 
 - Expect pack overhead in addition to stored object bytes.
