@@ -251,3 +251,13 @@ def test_vault_does_not_import_provider_implementations() -> None:
         pytest.skip("vault directory does not exist")
     bad = _imports_any(vault_dir, ("mindcap.plugins.",))
     assert not bad, "vault/ imports provider implementations:\n" + "\n".join(bad)
+
+
+def test_vault_core_does_not_import_google_drive_integrations() -> None:
+    vault_dir = MINDCAP_SRC / "vault"
+    if not vault_dir.exists():
+        pytest.skip("vault directory does not exist")
+    bad = _imports_any(vault_dir, ("mindcap.integrations.google_drive",))
+    assert not bad, (
+        "vault core imports google_drive integrations directly:\n" + "\n".join(bad)
+    )

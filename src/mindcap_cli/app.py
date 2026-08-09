@@ -25,6 +25,8 @@ from mindcap.config import (
 from mindcap.core.errors import MindcapError
 from mindcap.core.models import CaptureEnvelope, CaptureRequest, RawResponseUnit
 from mindcap.core.progress import CaptureProgressReporter, CaptureStats
+from mindcap.integrations.google_drive.auth import authenticate_google_drive
+from mindcap.integrations.google_drive.doctor import doctor_google_drive
 from mindcap.plugins.chatgpt.strategies.browser import (
     _find_stable_chrome,
     _is_dedicated_chrome_running,
@@ -433,6 +435,27 @@ def auth_distrokid() -> None:
         _fail(error)
 
 
+@auth_app.command("google-drive")
+def auth_google_drive(
+    client_secrets_file: Annotated[
+        Path,
+        typer.Option(
+            "--client-secrets-file",
+            help="Path to Google OAuth desktop client configuration JSON.",
+        ),
+    ],
+) -> None:
+    """Configure Google Drive OAuth settings for the vault backend."""
+    try:
+        profile = authenticate_google_drive(client_secrets_file)
+        console.print(
+            "[bold green]Google Drive authentication configured.[/bold green] "
+            f"account={profile.account} scope={profile.scope}"
+        )
+    except Exception as error:
+        _fail(error)
+
+
 @app.command()
 def capture(
     source_type: Annotated[str, typer.Argument(help="Registered source plugin.")],
@@ -822,6 +845,37 @@ def doctor_soundcloud(
         _fail(error)
 
 
+@doctor_app.command("google-drive")
+def doctor_google_drive_command(
+    client_secrets_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--client-secrets-file",
+            help="Optional Google OAuth desktop client configuration JSON.",
+        ),
+    ] = None,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Emit machine-readable JSON output.")
+    ] = False,
+) -> None:
+    """Run safe Google Drive diagnostics."""
+    try:
+        diagnostics = doctor_google_drive(client_secrets_file)
+    except Exception as error:
+        _fail(error)
+        return
+    if json_output:
+        console.print_json(data=diagnostics)
+        return
+    table = Table(title="Mindcap Google Drive Doctor", show_header=False)
+    table.add_column("Field", style="bold")
+    table.add_column("Value")
+    table.add_row("Status", diagnostics["status"])
+    table.add_row("Scope", diagnostics["scope"])
+    table.add_row("Client secrets file", diagnostics["client_secrets_file"])
+    console.print(table)
+
+
 @inspect_app.command("suno")
 def inspect_suno(
     archive: Annotated[Path, typer.Argument(help="Suno workspace bundle directory.")],
@@ -1000,6 +1054,80 @@ def inspect_chatgpt(
     )
 
 
+@vault_app.command("create")
+def vault_create(
+    storage_backend: Annotated[
+        str,
+        typer.Option(
+            "--storage-backend",
+            help="Vault storage backend (filesystem or google-drive).",
+        ),
+    ] = "filesystem",
+    destination: Annotated[
+        str | None,
+        typer.Option(
+            "--destination",
+            help="Destination path for filesystem vault creation.",
+        ),
+    ] = None,
+    name: Annotated[
+        str | None,
+        typer.Option("--name", help="Requested Google Drive vault folder name."),
+    ] = None,
+    json_output: Annotated[
+        bool, typer.Option("--json", help="Emit machine-readable JSON output.")
+    ] = False,
+) -> None:
+    """Create an empty vault destination."""
+    from mindcap.vault.backends import parse_vault_locator
+    from mindcap.vault.layout import initialize_vault
+
+    backend = storage_backend.strip().lower()
+    created_at = datetime.now(UTC).isoformat()
+    if backend == "filesystem":
+        if not destination:
+            _fail(ValueError("Pass --destination for filesystem vault creation."))
+            return
+        locator = parse_vault_locator(destination)
+        if getattr(locator, "backend", "") != "filesystem":
+            _fail(ValueError("Filesystem backend requires a local path destination."))
+            return
+        metadata = initialize_vault(
+            locator.path,
+            provider="vault",
+            created_at=created_at,
+        )
+        payload = {
+            "backend": "filesystem",
+            "vault_id": metadata.vault_id,
+            "locator": str(locator.path),
+            "verification": "initialized",
+        }
+    elif backend == "google-drive":
+        _ = name
+        _fail(
+            ValueError(
+                "Native Google Drive vault creation is available only through the "
+                "Google Drive artifact-store backend implementation."
+            )
+        )
+        return
+    else:
+        _fail(ValueError(f'Unsupported storage backend: "{storage_backend}"'))
+        return
+    if json_output:
+        console.print_json(data=payload)
+        return
+    table = Table(title="Mindcap Vault Create", show_header=False)
+    table.add_column("Field", style="bold")
+    table.add_column("Value")
+    table.add_row("Backend", payload["backend"])
+    table.add_row("Vault ID", payload["vault_id"])
+    table.add_row("Locator", payload["locator"])
+    table.add_row("Verification", payload["verification"])
+    console.print(table)
+
+
 @vault_app.command("ingest")
 def vault_ingest(
     provider: Annotated[str, typer.Option("--provider", help="Vault provider name.")],
@@ -1007,7 +1135,7 @@ def vault_ingest(
         Path, typer.Option("--source", help="Source bundle or workspace root.")
     ],
     destination: Annotated[
-        Path, typer.Option("--destination", help="Vault destination directory.")
+        str, typer.Option("--destination", help="Vault destination path or locator.")
     ],
     source_label: Annotated[
         str | None,
@@ -1094,7 +1222,9 @@ def vault_ingest(
 
 @vault_app.command("inspect")
 def vault_inspect(
-    vault: Annotated[Path, typer.Option("--vault", help="Vault directory to inspect.")],
+    vault: Annotated[
+        str, typer.Option("--vault", help="Vault directory or locator to inspect.")
+    ],
     json_output: Annotated[
         bool, typer.Option("--json", help="Emit machine-readable JSON output.")
     ] = False,
@@ -1141,7 +1271,9 @@ def vault_inspect(
 
 @vault_app.command("verify")
 def vault_verify(
-    vault: Annotated[Path, typer.Option("--vault", help="Vault directory to verify.")],
+    vault: Annotated[
+        str, typer.Option("--vault", help="Vault directory or locator to verify.")
+    ],
     deep: Annotated[
         bool,
         typer.Option("--deep", help="Read every stored object and verify SHA-256."),
@@ -1192,7 +1324,7 @@ def vault_verify(
 @vault_app.command("restore")
 def vault_restore(
     vault: Annotated[
-        Path, typer.Option("--vault", help="Vault directory to restore from.")
+        str, typer.Option("--vault", help="Vault directory or locator to restore from.")
     ],
     provider: Annotated[str, typer.Option("--provider", help="Provider name.")],
     source_id: Annotated[
