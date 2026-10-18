@@ -70,11 +70,14 @@ envelope = strategy.capture(request)
 
 ```
 mindcap_cli/
-└── app.py          Typer application and all command registrations
+├── app.py          Main application and existing command registrations
+└── bookmarks.py    Thin bookmark prepare/batches presentation adapter
 ```
 
-The current phase places all command implementations in `app.py`.  A future
-phase may split them into `commands/` submodules.
+Bookmark review commands use the same public facade as Python consumers.
+`prepare` composes the existing capture operation with the provider-owned
+review exporter; `batches` consumes an existing verified capture. The CLI
+contains no bookmark parsing, URL screening, or batch-generation logic.
 
 ---
 
@@ -152,6 +155,8 @@ mindcap auth <provider>
 mindcap doctor <provider>
 mindcap plugins list
 mindcap paths
+mindcap bookmarks prepare [options]
+mindcap bookmarks batches <bundle-path> [options]
 ```
 
 The old import `from mindcap.cli import app` is preserved as a

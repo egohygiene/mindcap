@@ -7,7 +7,7 @@ They are independent of Typer and Rich.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -86,3 +86,21 @@ class PluginListCommand(BaseModel):
 
 class PathsCommand(BaseModel):
     """Request to resolve key filesystem paths."""
+
+
+class PrepareBookmarksCommand(BaseModel):
+    """Capture local Chrome bookmarks and prepare separate manual-review batches."""
+
+    output_root: Path | None = None
+    batch_size: int = Field(default=50, ge=1, le=200)
+    user_data_dirs: list[Path] = Field(default_factory=list)
+    profiles: list[str] = Field(default_factory=list)
+    channel: Literal["stable", "beta", "dev", "canary"] = "stable"
+
+
+class BookmarkBatchesCommand(BaseModel):
+    """Prepare batches from an existing verified Chrome capture without recapture."""
+
+    bundle_path: Path
+    output_directory: Path | None = None
+    batch_size: int = Field(default=50, ge=1, le=200)

@@ -141,3 +141,21 @@ class PathResult(BaseModel):
     """Result returned by resolving key filesystem paths."""
 
     entries: list[PathEntry] = Field(default_factory=list)
+
+
+class BookmarkBatchesResult(BaseModel):
+    """Counts and local paths; never bookmark text, profile names, or raw URLs."""
+
+    status: Literal["complete"] = "complete"
+    source_bundle: Path
+    source_content_hash: str
+    output_directory: Path
+    profile_count: int
+    bookmark_count: int
+    included_count: int
+    withheld_count: int
+    batch_count: int
+    batch_size: int
+    first_batch: Path | None = None
+    counts_by_reason: dict[str, int] = Field(default_factory=dict)
+    capture_warning_count: int = 0

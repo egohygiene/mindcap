@@ -69,6 +69,43 @@ print(result.archive_version)  # 1, 2, …
 
 ---
 
+## Preparing Chrome bookmark review batches
+
+The convenience workflow captures readable profiles in one Chrome channel,
+verifies the private capture, and writes a separate review projection. It
+does not fetch bookmarked pages or upload files. Original occurrences and
+duplicates remain in the capture and eligible review batches.
+
+```python
+from pathlib import Path
+
+from mindcap import MindcapApplication
+from mindcap.contracts import BookmarkBatchesCommand, PrepareBookmarksCommand
+
+app = MindcapApplication.default()
+result = app.prepare_bookmarks(
+    PrepareBookmarksCommand(
+        output_root=Path.home() / "Downloads" / "mindcap-bookmarks",
+        batch_size=50,
+    )
+)
+print(result.first_batch)  # Inspect this file locally before sharing it.
+
+# Use one saved capture again without rereading Chrome.
+smaller = app.bookmark_batches(
+    BookmarkBatchesCommand(bundle_path=result.source_bundle, batch_size=25)
+)
+```
+
+`BookmarkBatchesResult` reports counts and local paths without copying
+bookmark titles, URLs, profile names or folder labels into ordinary summaries.
+Numbered files contain screened titles and URLs and still need inspection
+before manual sharing. Output stays outside Git working trees and capture
+archives. See the [bookmark walkthrough](chrome-bookmarks.md) for file
+selection, privacy limits, explicit output directories and troubleshooting.
+
+---
+
 ## Verifying an archive
 
 ```python

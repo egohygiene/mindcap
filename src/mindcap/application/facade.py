@@ -35,12 +35,14 @@ from typing import Any
 from mindcap.config import default_artifact_root
 from mindcap.contracts.commands import (
     AuthenticationCommand,
+    BookmarkBatchesCommand,
     CaptureCommand,
     DoctorCommand,
     ImportCommand,
     InspectCommand,
     PathsCommand,
     PluginListCommand,
+    PrepareBookmarksCommand,
     SyncCommand,
     VerifyCommand,
 )
@@ -56,6 +58,7 @@ from mindcap.contracts.protocols import (
     UserInteraction,
 )
 from mindcap.contracts.results import (
+    BookmarkBatchesResult,
     CaptureResult,
     DoctorResult,
     ImportConversationResult,
@@ -154,6 +157,22 @@ class MindcapApplication:
             )
         )
         return result
+
+    def prepare_bookmarks(
+        self, command: PrepareBookmarksCommand
+    ) -> BookmarkBatchesResult:
+        """Capture Chrome through the normal pipeline, then prepare review files."""
+        from mindcap.plugins.chrome_bookmarks.workflow import prepare_bookmarks
+
+        return prepare_bookmarks(command, capture=self.capture)
+
+    def bookmark_batches(
+        self, command: BookmarkBatchesCommand
+    ) -> BookmarkBatchesResult:
+        """Re-batch one verified Chrome archive without reading Chrome again."""
+        from mindcap.plugins.chrome_bookmarks.workflow import bookmark_batches
+
+        return bookmark_batches(command)
 
     def _run_capture(self, command: CaptureCommand, operation_id: str) -> CaptureResult:
         plugin = self._registry.get(command.provider)

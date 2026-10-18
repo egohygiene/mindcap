@@ -45,6 +45,7 @@ from mindcap.plugins.suno.auth import authenticate_suno_cookie_stdin
 from mindcap.plugins.suno.doctor import doctor_suno as run_suno_doctor
 from mindcap.registry import build_registry
 from mindcap.storage import verify_bundle
+from mindcap_cli.bookmarks import app as bookmarks_app
 
 app = typer.Typer(
     name="mindcap",
@@ -69,6 +70,7 @@ app.add_typer(doctor_app, name="doctor")
 app.add_typer(inspect_app, name="inspect")
 app.add_typer(sync_app, name="sync")
 app.add_typer(vault_app, name="vault")
+app.add_typer(bookmarks_app, name="bookmarks")
 console = Console()
 
 
@@ -1120,7 +1122,7 @@ def vault_create(
             _fail(
                 ValueError(
                     "Pass --name when creating a Google Drive-backed vault "
-                    "(for example: --name \"suno.mindcap-vault\")."
+                    '(for example: --name "suno.mindcap-vault").'
                 )
             )
             return
