@@ -135,18 +135,21 @@ class SunoWorkspaceCaptureService:
                     {},
                 )
             )
-        if options.get("include_video", True):
-            video_url = clip.get("video_url") or metadata.get("video_url")
-            if isinstance(video_url, str) and video_url:
-                candidates.append(
-                    (
-                        "video",
-                        video_url,
-                        "video/mp4",
-                        f"clips/{clip_id}/video/original.mp4",
-                        {},
-                    )
+        video_url = clip.get("video_url") or metadata.get("video_url")
+        if (
+            options.get("include_video", True)
+            and isinstance(video_url, str)
+            and video_url
+        ):
+            candidates.append(
+                (
+                    "video",
+                    video_url,
+                    "video/mp4",
+                    f"clips/{clip_id}/video/original.mp4",
+                    {},
                 )
+            )
         # Additional media_urls variants beyond primary audio/video
         seen_urls = {audio_url, video_url}
         for media_entry in _object_list(clip.get("media_urls")):
@@ -409,18 +412,18 @@ class SunoWorkspaceCaptureService:
 
         # ── Completeness validation ───────────────────────────────────────
         actual_count = len(clips_by_id)
-        capture_complete: bool
+        capture_complete = len(assets) == len(all_asset_jobs)
         if expected_clip_count is not None and actual_count < expected_clip_count:
             warnings.append(
                 f"Incomplete capture: expected {expected_clip_count} clips, "
                 f"archived {actual_count}."
             )
             capture_complete = False
-        else:
-            capture_complete = True
 
         stats.clips_archived = actual_count
         stats.audio_downloaded = audio_count
+        stats.audio_expected = len(audio_jobs)
+        stats.capture_complete = capture_complete
         stats.artwork_downloaded = artwork_count
         stats.videos_downloaded = video_count
 
@@ -444,6 +447,11 @@ class SunoWorkspaceCaptureService:
                 "api_origin": client.api_origin,
                 "project_title": project_title,
                 "audio_count": audio_count,
+                "audio_expected_count": len(audio_jobs),
+                "audio_failed_count": len(audio_jobs) - audio_count,
+                "asset_expected_count": len(all_asset_jobs),
+                "asset_downloaded_count": len(assets),
+                "asset_failed_count": len(all_asset_jobs) - len(assets),
                 "artwork_count": artwork_count,
                 "video_count": video_count,
             },

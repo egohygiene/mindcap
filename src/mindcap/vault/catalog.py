@@ -104,14 +104,12 @@ _MIGRATIONS: tuple[tuple[int, str], ...] = (
 )
 
 
-
 def connect_database(path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = DELETE")
     return conn
-
 
 
 def apply_migrations(conn: sqlite3.Connection, metadata: VaultMetadata) -> None:
@@ -146,7 +144,6 @@ def apply_migrations(conn: sqlite3.Connection, metadata: VaultMetadata) -> None:
     conn.commit()
 
 
-
 def prepare_staged_database(
     vault_metadata: VaultMetadata,
     latest_catalog: Path | None,
@@ -164,7 +161,6 @@ def prepare_staged_database(
     return (workdir, staged_db)
 
 
-
 def load_imported_units(conn: sqlite3.Connection) -> set[tuple[str, str, str]]:
     rows = conn.execute(
         "SELECT provider, source_id, capture_version FROM archive_units"
@@ -173,7 +169,6 @@ def load_imported_units(conn: sqlite3.Connection) -> set[tuple[str, str, str]]:
         (str(row["provider"]), str(row["source_id"]), str(row["capture_version"]))
         for row in rows
     }
-
 
 
 def load_object_locations(conn: sqlite3.Connection) -> dict[str, tuple[str, str, int]]:
@@ -190,14 +185,12 @@ def load_object_locations(conn: sqlite3.Connection) -> dict[str, tuple[str, str,
     }
 
 
-
 def next_generation(conn: sqlite3.Connection) -> int:
     row = conn.execute(
         "SELECT COALESCE(MAX(generation), 0) AS generation FROM catalog_generations"
     ).fetchone()
     assert row is not None
     return int(row["generation"]) + 1
-
 
 
 def insert_generation(
@@ -213,7 +206,6 @@ def insert_generation(
         """,
         (generation, previous_generation, created_at),
     )
-
 
 
 def insert_ingestion_run(
@@ -249,7 +241,6 @@ def insert_ingestion_run(
             already_present_count,
         ),
     )
-
 
 
 def record_pack_seal(conn: sqlite3.Connection, seal: PackSeal) -> None:
@@ -289,7 +280,6 @@ def record_pack_seal(conn: sqlite3.Connection, seal: PackSeal) -> None:
             """,
             (item.sha256, seal.pack_id, item.member_name, item.byte_size),
         )
-
 
 
 def insert_archive(
@@ -348,7 +338,6 @@ def insert_archive(
         )
 
 
-
 def insert_provider_record(
     conn: sqlite3.Connection,
     archive_unit_id: int,
@@ -384,7 +373,6 @@ def insert_provider_record(
     )
 
 
-
 def validate_database(conn: sqlite3.Connection) -> None:
     integrity = conn.execute("PRAGMA integrity_check").fetchone()
     if integrity is None or integrity[0] != "ok":
@@ -392,7 +380,6 @@ def validate_database(conn: sqlite3.Connection) -> None:
     violations = conn.execute("PRAGMA foreign_key_check").fetchall()
     if violations:
         raise CatalogIntegrityError(f"Catalog foreign-key check failed: {violations}")
-
 
 
 def summarize(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -428,7 +415,6 @@ def summarize(conn: sqlite3.Connection) -> dict[str, Any]:
         str(last_import[0]) if last_import is not None else None
     )
     return values
-
 
 
 def _json_dumps(value: dict[str, Any]) -> str:

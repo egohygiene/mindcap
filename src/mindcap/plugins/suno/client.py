@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import base64
 import json
+import shutil
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -68,6 +71,12 @@ class SunoClient:
         self._client = httpx.Client(
             base_url=self.api_origin,
             follow_redirects=True,
+            timeout=httpx.Timeout(20.0, connect=10.0, read=20.0, write=20.0),
+            transport=transport,
+        )
+        # Media hosts must never inherit the API client's authentication or cookies.
+        self._media_client = httpx.Client(
+            follow_redirects=False,
             timeout=httpx.Timeout(20.0, connect=10.0, read=20.0, write=20.0),
             transport=transport,
         )
@@ -429,27 +438,100 @@ class SunoClient:
             category="aligned-lyrics",
         )
 
+    def _same_origin(self, left: httpx.URL, right: httpx.URL) -> bool:
+        return (left.scheme, left.host, left.port) == (
+            right.scheme,
+            right.host,
+            right.port,
+        )
+
+    @contextmanager
+    def _stream_asset(self, url: str) -> Iterator[httpx.Response]:
+        try:
+            target = self._client.base_url.join(url)
+        except httpx.InvalidURL:
+            raise CaptureFailedError("Suno asset URL is invalid.") from None
+        api_url = httpx.URL(self.api_origin)
+        can_authenticate = self._same_origin(target, api_url)
+        for _ in range(21):
+            if (
+                target.scheme not in {"http", "https"}
+                or not target.host
+                or target.userinfo
+            ):
+                raise CaptureFailedError("Suno asset URL is not a supported HTTP URL.")
+            headers = {"accept": "*/*", "user-agent": "mindcap/0.1.0"}
+            if can_authenticate and self._same_origin(target, api_url):
+                self.ensure_jwt()
+                headers.update(self._headers())
+            # Construct requests directly: Client.build_request() would merge the
+            # media client's cookie jar, including cookies set by previous hosts.
+            request = httpx.Request("GET", target, headers=headers)
+            response = self._media_client.send(request, stream=True)
+            try:
+                if response.is_redirect:
+                    location = response.headers.get("location")
+                    if not location:
+                        raise CaptureFailedError(
+                            "Suno asset redirect has no download location."
+                        )
+                    try:
+                        next_target = target.join(location)
+                    except httpx.InvalidURL:
+                        raise CaptureFailedError(
+                            "Suno asset redirect URL is invalid."
+                        ) from None
+                    if not self._same_origin(target, next_target):
+                        can_authenticate = False
+                    target = next_target
+                    continue
+                yield response
+                return
+            finally:
+                response.close()
+        raise CaptureFailedError("Suno asset exceeded the download redirect limit.")
+
     def download_to_file(self, url: str) -> tuple[Path, dict[str, Any]]:
         suffix = Path(redact_signed_url(url) or url).suffix or ".bin"
         temp_dir = Path(tempfile.mkdtemp(prefix="mindcap-suno-", dir="/tmp"))
         destination = temp_dir / f"asset{suffix}"
         part_path = destination.with_suffix(destination.suffix + ".part")
-        with self._client.stream("GET", url, headers=self._headers()) as response:
-            if response.status_code >= 400:
+        try:
+            try:
+                with self._stream_asset(url) as response:
+                    if response.status_code == 403:
+                        raise CaptureFailedError(
+                            "Failed to download Suno asset (403). The asset host "
+                            "denied access; check whether Download works for this "
+                            "clip in Suno. Provider download permissions or an "
+                            "expired asset URL may require a fresh capture."
+                        )
+                    if response.status_code >= 400:
+                        raise CaptureFailedError(
+                            f"Failed to download Suno asset ({response.status_code})."
+                        )
+                    with part_path.open("wb") as handle:
+                        total = 0
+                        for chunk in response.iter_bytes():
+                            handle.write(chunk)
+                            total += len(chunk)
+                    if total == 0:
+                        raise CaptureFailedError("Suno asset download was empty.")
+                    media_type = response.headers.get(
+                        "content-type", "application/octet-stream"
+                    )
+            except httpx.HTTPError:
                 raise CaptureFailedError(
-                    f"Failed to download Suno asset ({response.status_code})."
-                )
-            with part_path.open("wb") as handle:
-                total = 0
-                for chunk in response.iter_bytes():
-                    handle.write(chunk)
-                    total += len(chunk)
-        part_path.replace(destination)
-        return destination, {
-            "byte_size": destination.stat().st_size,
-            "media_type": response.headers.get(
-                "content-type", "application/octet-stream"
-            ),
-            "downloaded_at": datetime.now(UTC).isoformat(),
-            "source_url": redact_signed_url(url),
-        }
+                    "Suno asset transfer failed. Retry the capture; no complete "
+                    "asset was saved."
+                ) from None
+            part_path.replace(destination)
+            return destination, {
+                "byte_size": destination.stat().st_size,
+                "media_type": media_type,
+                "downloaded_at": datetime.now(UTC).isoformat(),
+                "source_url": redact_signed_url(url),
+            }
+        except BaseException:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            raise

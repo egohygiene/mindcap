@@ -10,6 +10,8 @@ import pytest
 from typer.testing import CliRunner
 
 from mindcap.core.errors import VerificationError
+from mindcap.core.hashing import sha256_bytes
+from mindcap.plugins.suno.archive.diagnostics import suno_asset_diagnostics
 from mindcap.plugins.suno.archive.inspector import inspect_suno_archive
 from mindcap_cli.app import app
 
@@ -86,6 +88,198 @@ def _make_minimal_bundle(root: Path) -> Path:
     )
 
     return bundle
+
+
+def _replace_metadata(bundle: Path, metadata: object) -> None:
+    relative = "workspace/metadata.json"
+    path = bundle / relative
+    path.write_text(json.dumps(metadata), encoding="utf-8")
+    checksums_path = bundle / "checksums.json"
+    checksums = json.loads(checksums_path.read_text(encoding="utf-8"))
+    for entry in checksums["files"]:
+        if entry["path"] == relative:
+            entry["sha256"] = sha256_bytes(path.read_bytes())
+            entry["byte_size"] = path.stat().st_size
+    checksums_path.write_text(json.dumps(checksums), encoding="utf-8")
+
+
+def test_offline_audio_diagnostics_only_emits_counts(tmp_path: Path) -> None:
+    bundle = _make_minimal_bundle(tmp_path)
+    marker = "private-credential-marker"
+    _replace_metadata(
+        bundle,
+        {
+            "title": marker,
+            "provider_metadata": {"cookie": marker},
+            "clips": [
+                {
+                    "clip_id": marker,
+                    "audio_url": f"https://cdn1.suno.ai/{marker}.mp3?Signature={marker}",
+                    "archived_assets": [
+                        {"asset_type": "audio", "capture_status": "verified"}
+                    ],
+                },
+                {
+                    "audio_url": f"https://studio-api.prod.suno.com/api/forbidden?token={marker}"
+                },
+                {"audio_url": "https://studio-api-prod.suno.com/api/forbidden/"},
+                {"audio_url": "https://studio-api-prod.suno.com/api/download"},
+                {"audio_url": f"https://{marker}.example/audio.mp3"},
+                {"audio_url": "https://[invalid"},
+                {},
+            ],
+        },
+    )
+    with (
+        patch("httpx.Client.request", side_effect=AssertionError("network")),
+        patch(
+            "mindcap.plugins.suno.client.load_suno_auth_state",
+            side_effect=AssertionError("auth"),
+        ),
+    ):
+        result = CliRunner().invoke(
+            app, ["inspect", "suno", str(bundle), "--asset-diagnostics"]
+        )
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)
+    assert data == {
+        "schema": "mindcap.suno-asset-diagnostics/v0.1",
+        "offline": True,
+        "clip_count": 7,
+        "clips_with_archived_primary_audio": 1,
+        "audio_url_kinds": {
+            "missing": 1,
+            "invalid": 1,
+            "forbidden_endpoint": 2,
+            "suno_api": 1,
+            "suno_cdn": 1,
+            "other_http": 1,
+        },
+        "audio_urls_with_query": 2,
+        "audio_urls_with_signature_keys": 1,
+    }
+    assert marker not in result.output
+    assert str(bundle) not in result.output
+    assert "https://" not in result.output
+
+
+def test_audio_diagnostics_handles_legacy_metadata_fallback(tmp_path: Path) -> None:
+    bundle = _make_minimal_bundle(tmp_path)
+    _replace_metadata(
+        bundle,
+        {
+            "clips": [
+                {
+                    "provider_metadata": {
+                        "metadata": {"audio_url": "https://cdn1.suno.ai/track.mp3"}
+                    }
+                },
+                {"provider_metadata": None},
+                {"audio_url": 5},
+            ]
+        },
+    )
+    data = suno_asset_diagnostics(bundle)
+    assert data["audio_url_kinds"]["suno_cdn"] == 1
+    assert data["audio_url_kinds"]["missing"] == 1
+    assert data["audio_url_kinds"]["invalid"] == 1
+
+
+@pytest.mark.parametrize("metadata", [None, [], {"clips": {}}, {"clips": [None]}])
+def test_audio_diagnostics_rejects_invalid_metadata_without_echo(
+    tmp_path: Path, metadata: object
+) -> None:
+    bundle = _make_minimal_bundle(tmp_path)
+    _replace_metadata(bundle, metadata)
+    result = CliRunner().invoke(
+        app, ["inspect", "suno", str(bundle), "--asset-diagnostics"]
+    )
+    assert result.exit_code == 1
+    assert "could not be verified" in result.output
+    assert str(bundle) not in result.output
+
+
+def test_audio_diagnostics_verifies_saved_files(tmp_path: Path) -> None:
+    bundle = _make_minimal_bundle(tmp_path)
+    _replace_metadata(bundle, {"clips": []})
+    (bundle / "clips/clip-alpha/audio/original.mp3").write_bytes(b"tampered")
+    with pytest.raises(VerificationError, match="could not be verified"):
+        suno_asset_diagnostics(bundle)
+
+
+def test_audio_diagnostics_handles_malformed_checksum_document(tmp_path: Path) -> None:
+    bundle = _make_minimal_bundle(tmp_path)
+    (bundle / "checksums.json").write_text("[]", encoding="utf-8")
+    result = CliRunner().invoke(
+        app, ["inspect", "suno", str(bundle), "--asset-diagnostics"]
+    )
+    assert result.exit_code == 1
+    assert "could not be verified" in result.output
+
+
+@pytest.mark.parametrize("substitute", [False, True])
+def test_audio_diagnostics_requires_checked_canonical_metadata(
+    tmp_path: Path, substitute: bool
+) -> None:
+    bundle = _make_minimal_bundle(tmp_path)
+    _replace_metadata(bundle, {"clips": []})
+    if substitute:
+        manifest_path = bundle / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["workspace_metadata_path"] = "reports/capture-report.json"
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    else:
+        checksums_path = bundle / "checksums.json"
+        checksums = json.loads(checksums_path.read_text(encoding="utf-8"))
+        checksums["files"] = [
+            entry
+            for entry in checksums["files"]
+            if entry["path"] != "workspace/metadata.json"
+        ]
+        checksums_path.write_text(json.dumps(checksums), encoding="utf-8")
+    with pytest.raises(VerificationError, match="could not be verified"):
+        suno_asset_diagnostics(bundle)
+
+
+def test_audio_diagnostics_validates_urls_and_malformed_asset_status(
+    tmp_path: Path,
+) -> None:
+    bundle = _make_minimal_bundle(tmp_path)
+    _replace_metadata(
+        bundle,
+        {
+            "clips": [
+                {
+                    "audio_url": "https://cdn1.suno.ai:bad/audio.mp3",
+                    "archived_assets": [{"asset_type": "audio", "capture_status": {}}],
+                },
+                {"audio_url": "https://user:secret@cdn1.suno.ai/audio.mp3"},
+                {"audio_url": "https://cdn1.suno.ai:65536/audio.mp3"},
+            ]
+        },
+    )
+    data = suno_asset_diagnostics(bundle)
+    assert data["clips_with_archived_primary_audio"] == 0
+    assert data["audio_url_kinds"]["invalid"] == 3
+
+
+def test_legacy_inspection_does_not_claim_capture_complete(tmp_path: Path) -> None:
+    bundle = _make_minimal_bundle(tmp_path)
+    result = CliRunner().invoke(app, ["inspect", "suno", str(bundle)])
+    assert result.exit_code == 0
+    assert "unknown (legacy archive)" in result.stdout
+
+
+def test_inspection_reports_saved_partial_completeness(tmp_path: Path) -> None:
+    bundle = _make_minimal_bundle(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["capture_completeness"] = "partial"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    result = CliRunner().invoke(app, ["inspect", "suno", str(bundle)])
+    assert result.exit_code == 0
+    assert "Capture completeness" in result.stdout
+    assert "partial" in result.stdout
 
 
 # ---------------------------------------------------------------------------

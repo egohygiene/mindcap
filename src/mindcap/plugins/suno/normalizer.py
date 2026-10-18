@@ -274,6 +274,9 @@ def normalize_suno(
             )
         )
 
+    capture_complete = bool(
+        envelope.safe_metadata.get("capture_complete", not envelope.warnings)
+    )
     return {
         "schema": "mindcap.suno-workspace/v0.3",
         "provider": "suno",
@@ -295,7 +298,21 @@ def normalize_suno(
             "is_public": workspace.get("is_public"),
             "is_trashed": workspace.get("is_trashed"),
         },
-        "capture_completeness": "partial" if envelope.warnings else "complete",
+        "capture_complete": capture_complete,
+        "capture_completeness": "complete" if capture_complete else "partial",
+        **{
+            key: envelope.safe_metadata[key]
+            for key in (
+                "expected_clip_count",
+                "audio_count",
+                "audio_expected_count",
+                "audio_failed_count",
+                "asset_expected_count",
+                "asset_downloaded_count",
+                "asset_failed_count",
+            )
+            if key in envelope.safe_metadata
+        },
         "pagination_evidence": [
             unit.safe_metadata
             for unit in envelope.response_units

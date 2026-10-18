@@ -132,7 +132,7 @@ def _capture(
     debug: bool = bool(options.get("debug"))
     quiet: bool = bool(options.get("quiet")) and not bool(options.get("json"))
     reporter = CaptureProgressReporter(
-        console=console,
+        console=Console(stderr=True) if options.get("json") else console,
         verbose=verbose,
         debug=debug,
         quiet=quiet,
@@ -168,6 +168,10 @@ def _capture(
             console.print_json(
                 data={
                     "status": stored.status,
+                    "capture_complete": envelope.safe_metadata.get(
+                        "capture_complete", not envelope.warnings
+                    ),
+                    "capture_completeness": normalized.get("capture_completeness"),
                     "source_id": stored.source_id,
                     "version": stored.version,
                     "path": str(stored.path),
@@ -180,11 +184,15 @@ def _capture(
             stats = CaptureStats(
                 clips_archived=int(safe_meta.get("clip_count") or 0),
                 audio_downloaded=int(safe_meta.get("audio_count") or 0),
+                audio_expected=safe_meta.get("audio_expected_count"),
                 artwork_downloaded=int(safe_meta.get("artwork_count") or 0),
                 videos_downloaded=int(safe_meta.get("video_count") or 0),
                 bytes_downloaded=int(safe_meta.get("bytes_downloaded") or 0),
                 elapsed_seconds=elapsed,
                 verification_passed=stored.status in ("complete", "unchanged"),
+                capture_complete=safe_meta.get(
+                    "capture_complete", not envelope.warnings
+                ),
                 warnings=list(envelope.warnings),
             )
             reporter.summary(
@@ -879,12 +887,24 @@ def doctor_google_drive_command(
 @inspect_app.command("suno")
 def inspect_suno(
     archive: Annotated[Path, typer.Argument(help="Suno workspace bundle directory.")],
+    asset_diagnostics: Annotated[
+        bool,
+        typer.Option(
+            "--asset-diagnostics",
+            help="Print offline audio-link counts as JSON without URLs or identifiers.",
+        ),
+    ] = False,
 ) -> None:
     """Inspect a captured Suno workspace archive."""
     from mindcap.plugins.suno.archive.inspector import inspect_suno_archive
 
     try:
-        inspect_suno_archive(archive, console)
+        if asset_diagnostics:
+            from mindcap.plugins.suno.archive.diagnostics import suno_asset_diagnostics
+
+            console.print_json(data=suno_asset_diagnostics(archive))
+        else:
+            inspect_suno_archive(archive, console)
     except (MindcapError, OSError) as error:
         _fail(error)
 
@@ -1120,7 +1140,7 @@ def vault_create(
             _fail(
                 ValueError(
                     "Pass --name when creating a Google Drive-backed vault "
-                    "(for example: --name \"suno.mindcap-vault\")."
+                    '(for example: --name "suno.mindcap-vault").'
                 )
             )
             return

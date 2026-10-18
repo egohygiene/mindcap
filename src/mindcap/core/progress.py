@@ -34,6 +34,7 @@ class CaptureStats:
     clips_discovered: int = 0
     clips_archived: int = 0
     audio_downloaded: int = 0
+    audio_expected: int | None = None
     artwork_downloaded: int = 0
     videos_downloaded: int = 0
     bytes_downloaded: int = 0
@@ -41,6 +42,7 @@ class CaptureStats:
     bytes_written: int = 0
     elapsed_seconds: float = 0.0
     verification_passed: bool = True
+    capture_complete: bool = True
     warnings: list[str] = field(default_factory=list)
 
     @property
@@ -197,7 +199,10 @@ class CaptureProgressReporter:
         if project_name:
             table.add_row("Project", project_name)
         table.add_row("Clips", str(stats.clips_archived))
-        table.add_row("Audio", str(stats.audio_downloaded))
+        audio_label = str(stats.audio_downloaded)
+        if stats.audio_expected is not None:
+            audio_label = f"{stats.audio_downloaded} / {stats.audio_expected}"
+        table.add_row("Audio", audio_label)
         table.add_row("Artwork", str(stats.artwork_downloaded))
         table.add_row("Videos", str(stats.videos_downloaded))
         table.add_row("Elapsed", CaptureStats._fmt_elapsed(stats.elapsed_seconds))
@@ -208,11 +213,18 @@ class CaptureProgressReporter:
         verification_label = (
             "[green]PASS[/green]" if stats.verification_passed else "[red]FAIL[/red]"
         )
-        table.add_row("Verification", verification_label)
+        table.add_row(
+            "Capture completeness",
+            "Complete" if stats.capture_complete else "[yellow]Partial[/yellow]",
+        )
+        table.add_row("Archive integrity", verification_label)
         if archive_path:
             table.add_row("Archive", archive_path)
         self._console.print()
-        self._console.rule("[bold]Capture Complete[/bold]")
+        capture_label = (
+            "Capture Complete" if stats.capture_complete else "Capture Partial"
+        )
+        self._console.rule(f"[bold]{capture_label}[/bold]")
         self._console.print(table)
         if stats.warnings:
             self._console.print(

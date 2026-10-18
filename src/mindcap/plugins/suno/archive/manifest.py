@@ -26,6 +26,21 @@ def build_manifest(
         "raw_unit_count": raw_unit_count,
         "asset_count": asset_count,
         "clip_count": len(normalized.get("clips") or []),
+        "capture_complete": normalized.get("capture_complete"),
+        "capture_completeness": normalized.get("capture_completeness"),
+        **{
+            key: normalized[key]
+            for key in (
+                "expected_clip_count",
+                "audio_count",
+                "audio_expected_count",
+                "audio_failed_count",
+                "asset_expected_count",
+                "asset_downloaded_count",
+                "asset_failed_count",
+            )
+            if key in normalized
+        },
         "warnings": normalized.get("warnings") or [],
         "readme_path": "README.md",
         "checksums_path": "checksums.json",

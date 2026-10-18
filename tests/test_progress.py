@@ -163,3 +163,38 @@ class TestCaptureStats:
         stats = CaptureStats()
         reporter.summary(stats)
         assert buf.getvalue() == ""
+
+    def test_partial_capture_distinguishes_integrity_from_completeness(self) -> None:
+        buf = StringIO()
+        reporter = CaptureProgressReporter(
+            console=Console(file=buf, highlight=False, markup=True, width=100)
+        )
+        reporter.summary(
+            CaptureStats(
+                clips_archived=36,
+                audio_downloaded=0,
+                audio_expected=36,
+                capture_complete=False,
+                verification_passed=True,
+            )
+        )
+
+        output = buf.getvalue()
+        assert "Capture Partial" in output
+        assert "Capture Complete" not in output
+        assert "0 / 36" in output
+        assert "Capture completeness Partial" in " ".join(output.split())
+        assert "Archive integrity PASS" in " ".join(output.split())
+
+    def test_complete_capture_summary_keeps_default_stats_compatible(self) -> None:
+        buf = StringIO()
+        reporter = CaptureProgressReporter(
+            console=Console(file=buf, highlight=False, markup=True, width=100)
+        )
+        reporter.summary(CaptureStats(audio_downloaded=1))
+
+        output = buf.getvalue()
+        assert "Capture Complete" in output
+        assert "Capture completeness Complete" in " ".join(output.split())
+        assert "Archive integrity PASS" in " ".join(output.split())
+        assert " / " not in output

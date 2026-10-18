@@ -117,13 +117,32 @@ class SunoWorkspaceStorageStrategy:
                 json.dumps(normalized, indent=2, sort_keys=True, ensure_ascii=False),
             )
             write_text("README.md", transcript)
-            report_json = {
+            report_json: dict[str, Any] = {
                 "schema": "mindcap.suno-capture-report/v0.1",
                 "source_id": source_id,
                 "capture_version": version,
-                "status": "complete_with_warnings"
-                if normalized.get("warnings")
-                else "complete",
+                "status": (
+                    "partial"
+                    if normalized.get("capture_complete") is False
+                    else "complete_with_warnings"
+                    if normalized.get("warnings")
+                    else "complete"
+                ),
+                "capture_complete": normalized.get("capture_complete"),
+                "capture_completeness": normalized.get("capture_completeness"),
+                **{
+                    key: normalized[key]
+                    for key in (
+                        "expected_clip_count",
+                        "audio_count",
+                        "audio_expected_count",
+                        "audio_failed_count",
+                        "asset_expected_count",
+                        "asset_downloaded_count",
+                        "asset_failed_count",
+                    )
+                    if key in normalized
+                },
                 "workspace_id": normalized["workspace_id"],
                 "clip_count": len(normalized.get("clips") or []),
                 "asset_count": len(envelope.assets),
@@ -137,10 +156,24 @@ class SunoWorkspaceStorageStrategy:
                 f"- Capture version: {version}",
                 f"- Workspace ID: `{normalized['workspace_id']}`",
                 f"- Status: {report_json['status']}",
+                f"- Capture completeness: {report_json['capture_completeness']}",
                 f"- Clips archived: {report_json['clip_count']}",
                 f"- Assets archived: {report_json['asset_count']}",
-                "",
             ]
+            if "audio_expected_count" in report_json:
+                report_markdown.append(
+                    f"- Primary audio archived: {report_json['audio_count']} / "
+                    f"{report_json['audio_expected_count']} "
+                    f"({report_json['audio_failed_count']} failed)"
+                )
+            if "asset_expected_count" in report_json:
+                report_markdown.append(
+                    f"- Advertised assets archived: "
+                    f"{report_json['asset_downloaded_count']} / "
+                    f"{report_json['asset_expected_count']} "
+                    f"({report_json['asset_failed_count']} failed)"
+                )
+            report_markdown.append("")
             warnings = report_json.get("warnings") or []
             if warnings:
                 report_markdown.extend(["## Warnings", ""])
