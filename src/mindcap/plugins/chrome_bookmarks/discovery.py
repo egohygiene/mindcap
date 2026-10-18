@@ -83,6 +83,8 @@ def _load_profile_names(user_data_dir: Path) -> dict[str, str]:
         payload = json.loads(local_state_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
         return {}
+    if not isinstance(payload, dict):
+        return {}
     profile_data = payload.get("profile")
     info_cache = (
         profile_data.get("info_cache") if isinstance(profile_data, dict) else None

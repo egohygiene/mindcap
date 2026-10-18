@@ -4,9 +4,9 @@ Mindcap is an extensible Python CLI for capturing source material, preserving a
 verified archive, and preparing canonical inputs for knowledge extraction and
 the Ego Hygiene Mind Garden.
 
-Mindcap currently ships ChatGPT, Suno, and DistroKid source plugins. The architecture is
-designed for future webpage, PDF, image, repository, document, and media
-plugins.
+Mindcap currently ships ChatGPT, Suno, DistroKid, SoundCloud, and Chrome
+bookmarks source plugins. The architecture is designed for future webpage,
+PDF, image, repository, document, and media plugins.
 
 > [!WARNING]
 > The private ChatGPT browser strategy is experimental. ChatGPT does not expose
@@ -34,25 +34,24 @@ Gardenization, and Google Drive upload are deliberately outside this bootstrap.
 
 ## Installation
 
-Unzip this directory into the Ego Hygiene repository:
-
-```text
-~/src/egohygiene/egohygiene/tools/mindcap/
-```
-
-From the Mindcap directory:
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then clone
+this repository and install the locked dependencies:
 
 ```bash
-cd "$HOME/src/egohygiene/egohygiene/tools/mindcap"
-uv sync
+git clone "https://github.com/egohygiene/mindcap.git"
+cd "mindcap"
+uv sync --locked
+```
+
+Chrome bookmark capture reads files from your existing Chrome installation.
+It needs no login, browser download, API key, or running service. Run it on the
+computer that holds your bookmarks. Other source plugins may need their own
+authentication and browser setup as described below.
+
+For provider workflows that need Playwright Chromium, install it separately:
+
+```bash
 uv run playwright install chromium
-```
-
-Or if you have [Task](https://taskfile.dev/) installed:
-
-```bash
-cd "$HOME/src/egohygiene/egohygiene/tools/mindcap"
-task setup
 ```
 
 Run the offline test suite:
@@ -68,19 +67,47 @@ Or with Task:
 task check
 ```
 
+## Try Chrome Bookmarks
+
+From the repository directory, capture the readable profiles in stable Google
+Chrome and prepare small Markdown files for review:
+
+```bash
+uv run mindcap bookmarks prepare
+```
+
+The default workspace is `~/Downloads/mindcap-bookmarks`. The command prints
+the private archive path, a fresh review directory, counts, and the first batch
+file to inspect. Each batch holds at most 50 bookmarks and may be smaller to
+keep the text manageable. Your browser and original bookmarks are unchanged.
+
+Open the review directory's `README.md`, inspect the first batch locally, then
+attach that one Markdown file here for curation. Continue with the next batch
+after its review. Share only batches you have inspected: titles and URLs can
+still reveal personal information. The raw archive, manifest, and withheld
+indices stay local. Nothing is uploaded automatically.
+
+For smaller batches:
+
+```bash
+uv run mindcap bookmarks prepare --batch-size 25
+```
+
+[Chrome bookmark walkthrough](docs/chrome-bookmarks.md) covers choosing
+profiles, other Chrome channels, saved captures, and troubleshooting.
+
 ## Protect the Artifact Cache
 
-Mindcap defaults to the Ego Hygiene repository root at:
+Generic capture commands default to the nearest Git repository root at:
 
 ```text
 .cache/mindcap/
 ```
 
 Before capturing private data, verify that the root `.cache/` directory is
-ignored:
+ignored. From this repository:
 
 ```bash
-cd "$HOME/src/egohygiene/egohygiene"
 mkdir -p ".cache/mindcap"
 git check-ignore ".cache/mindcap"
 ```
@@ -92,9 +119,11 @@ the repository root `.gitignore` before continuing:
 .cache/
 ```
 
+The bookmark quickstart uses its separate Downloads workspace instead.
+
 ## Inspect the CLI
 
-From `tools/mindcap/`:
+From the Mindcap repository directory:
 
 ```bash
 uv run mindcap --help
