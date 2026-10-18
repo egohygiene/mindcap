@@ -68,6 +68,19 @@ Or with Task:
 task check
 ```
 
+## Logs and troubleshooting
+
+Capture includes timestamped progress, grouped warnings, and actionable errors.
+Use `--verbose` for individual asset details or save sanitized diagnostics:
+
+```bash
+uv run mindcap --debug --log-file "$HOME/Downloads/mindcap-debug.jsonl" \
+  capture suno "<workspace-id>"
+```
+
+See [terminal output and diagnostics](docs/diagnostics.md) for quiet/JSON output,
+exit codes, and the diagnostic log format.
+
 ## Protect the Artifact Cache
 
 Mindcap defaults to the Ego Hygiene repository root at:

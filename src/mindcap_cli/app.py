@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import platform
 import subprocess
 import sys
@@ -22,6 +23,7 @@ from mindcap.config import (
     distrokid_profile_dir,
     find_repository_root,
 )
+from mindcap.core.diagnostics import redact_text
 from mindcap.core.errors import MindcapError
 from mindcap.core.models import CaptureEnvelope, CaptureRequest, RawResponseUnit
 from mindcap.core.progress import CaptureProgressReporter, CaptureStats
@@ -45,21 +47,25 @@ from mindcap.plugins.suno.auth import authenticate_suno_cookie_stdin
 from mindcap.plugins.suno.doctor import doctor_suno as run_suno_doctor
 from mindcap.registry import build_registry
 from mindcap.storage import verify_bundle
+from mindcap_cli.runtime import DiagnosticTyper, diagnostic_options, fail
 
-app = typer.Typer(
+app = DiagnosticTyper(
     name="mindcap",
+    pretty_exceptions_enable=False,
     no_args_is_help=True,
     help="Capture and normalize sources for knowledge extraction.",
 )
-auth_app = typer.Typer(no_args_is_help=True, help="Manage source authentication.")
-plugins_app = typer.Typer(no_args_is_help=True, help="Inspect source plugins.")
-doctor_app = typer.Typer(no_args_is_help=True, help="Inspect safe browser diagnostics.")
-inspect_app = typer.Typer(no_args_is_help=True, help="Inspect captured archives.")
-sync_app = typer.Typer(
+auth_app = DiagnosticTyper(no_args_is_help=True, help="Manage source authentication.")
+plugins_app = DiagnosticTyper(no_args_is_help=True, help="Inspect source plugins.")
+doctor_app = DiagnosticTyper(
+    no_args_is_help=True, help="Inspect safe browser diagnostics."
+)
+inspect_app = DiagnosticTyper(no_args_is_help=True, help="Inspect captured archives.")
+sync_app = DiagnosticTyper(
     no_args_is_help=True,
     help="Provider-wide cache-aware synchronization.",
 )
-vault_app = typer.Typer(
+vault_app = DiagnosticTyper(
     no_args_is_help=True,
     help="Ingest, inspect, verify, and restore immutable archival vaults.",
 )
@@ -70,6 +76,7 @@ app.add_typer(inspect_app, name="inspect")
 app.add_typer(sync_app, name="sync")
 app.add_typer(vault_app, name="vault")
 console = Console()
+logger = logging.getLogger("mindcap.cli")
 
 
 def _print_version() -> None:
@@ -95,13 +102,27 @@ def main(
             callback=_version_callback,
         ),
     ] = False,
+    verbose: Annotated[
+        bool, typer.Option("--verbose", help="Show per-item diagnostic details.")
+    ] = False,
+    debug: Annotated[
+        bool, typer.Option("--debug", help="Show sanitized debug diagnostics.")
+    ] = False,
+    quiet: Annotated[
+        bool, typer.Option("--quiet", help="Suppress informational diagnostics.")
+    ] = False,
+    log_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--log-file", help="Append sanitized JSONL diagnostics to a file."
+        ),
+    ] = None,
 ) -> None:
-    """Configure eager top-level options for the Mindcap CLI."""
+    """Configure global diagnostic options; put these before the command name."""
 
 
 def _fail(error: Exception) -> None:
-    console.print(f"[bold red]Mindcap error:[/bold red] {error}")
-    raise typer.Exit(code=1) from error
+    fail(error)
 
 
 def _fmt_bytes_human(value: int) -> str:
@@ -128,11 +149,13 @@ def _capture(
     options: dict[str, Any],
     identifier_override: str | None = None,
 ) -> None:
-    verbose: bool = bool(options.get("verbose"))
-    debug: bool = bool(options.get("debug"))
-    quiet: bool = bool(options.get("quiet")) and not bool(options.get("json"))
+    flags = diagnostic_options()
+    verbose = bool(options.get("verbose")) or flags["verbose"]
+    debug = bool(options.get("debug")) or flags["debug"]
+    quiet = bool(options.get("quiet")) or flags["quiet"]
     reporter = CaptureProgressReporter(
-        console=Console(stderr=True) if options.get("json") else console,
+        console=Console(stderr=True),
+        summary_console=console,
         verbose=verbose,
         debug=debug,
         quiet=quiet,
@@ -164,6 +187,15 @@ def _capture(
         reporter.phase("Verifying archive...")
         stored = plugin.storage().persist(request, envelope, normalized, transcript)
         elapsed = time.monotonic() - start_time
+        reporter.report_warnings(envelope.warnings)
+        logger.info(
+            "Archive saved: integrity=%s capture_complete=%s elapsed=%.2fs path=%s",
+            stored.status,
+            envelope.safe_metadata.get("capture_complete", not envelope.warnings),
+            elapsed,
+            stored.path,
+            extra={"progress_event": True},
+        )
         if options.get("json"):
             console.print_json(
                 data={
@@ -202,6 +234,12 @@ def _capture(
                 else None,
                 archive_path=str(stored.path),
             )
+        if not envelope.safe_metadata.get("capture_complete", not envelope.warnings):
+            logger.warning(
+                "Capture is partial. Saved files remain available; inspect the "
+                "archive warnings before retrying. Exit code: 2."
+            )
+            raise typer.Exit(code=2)
     except (MindcapError, OSError, ValueError, json.JSONDecodeError) as error:
         _fail(error)
 
@@ -221,8 +259,9 @@ def _capture_export(
     from mindcap.plugins.chatgpt.plugin import ChatGPTPlugin
     from mindcap.plugins.chatgpt.strategies.export import ExportCaptureStrategy
 
-    quiet: bool = bool(options.get("quiet")) and not bool(options.get("json"))
-    verbose: bool = bool(options.get("verbose"))
+    flags = diagnostic_options()
+    quiet: bool = bool(options.get("quiet")) or flags["quiet"]
+    verbose: bool = bool(options.get("verbose")) or flags["verbose"]
     artifact_root = (output or default_artifact_root()).resolve()
     start_time = time.monotonic()
 
@@ -235,15 +274,20 @@ def _capture_export(
         _fail(error)
         return
 
+    reporter = CaptureProgressReporter(
+        console=Console(stderr=True),
+        verbose=verbose,
+        debug=bool(options.get("debug")) or flags["debug"],
+        quiet=quiet,
+    )
     if not quiet:
-        console.print(
-            f"[bold]Inspecting export:[/bold] {source}\n"
+        reporter.phase(
+            f"Inspecting export: {source}\n"
             f"  Conversation files: {len(discovery.conversation_files)}\n"
             f"  Metadata files:     {len(discovery.metadata_files)}\n"
             f"  Unknown files:      {len(discovery.unknown_files)}"
         )
-        for w in discovery.warnings:
-            console.print(f"  [yellow]⚠ {w}[/yellow]")
+    reporter.report_warnings(discovery.warnings)
 
     import_id = f"import-{uuid.uuid4().hex[:16]}"
     import_root = artifact_root / "imports" / "chatgpt" / import_id
@@ -257,7 +301,7 @@ def _capture_export(
     total_discovered = 0
 
     if not quiet:
-        console.print("\n[bold]Parsing conversations...[/bold]")
+        reporter.phase("Parsing conversations...")
 
     try:
         for record in export_strategy.iter_conversations(
@@ -314,17 +358,19 @@ def _capture_export(
                 else:
                     imported.append(entry)
                 if verbose:
-                    console.print(f"  [{stored.status}] {conv_id} → {stored.path.name}")
+                    reporter.detail(f"{stored.status}: {conv_id} → {stored.path.name}")
             except (MindcapError, OSError, ValueError, json.JSONDecodeError) as exc:
                 failed.append(
                     {
                         "conversation_id": conv_id,
                         "status": "failed",
-                        "error": str(exc),
+                        "error": redact_text(str(exc)),
                         "source_file": record.source_file,
                     }
                 )
-                all_warnings.append(f"Failed to import conversation {conv_id}: {exc}")
+                warning = redact_text(f"Failed to import conversation {conv_id}: {exc}")
+                all_warnings.append(warning)
+                reporter.warn(warning)
     except (
         UnsupportedExportError,
         UnsupportedConversationSchemaError,
@@ -400,7 +446,7 @@ def _capture_export(
         console.print(table)
 
     if failed:
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=2)
 
 
 @auth_app.command("chatgpt")
@@ -1061,9 +1107,9 @@ def inspect_chatgpt(
         console.print(table)
         if verbose:
             for w in graph_integrity.get("warnings") or []:
-                console.print(f"  [yellow]⚠ Graph: {w}[/yellow]")
+                logger.warning("Graph: %s", w)
             for w in normalized.get("attachment_warnings") or []:
-                console.print(f"  [yellow]⚠ {w}[/yellow]")
+                logger.warning("%s", w)
         return
 
     _fail(
@@ -1246,7 +1292,7 @@ def vault_ingest(
     console.print(table)
     if summary.warning:
         console.print()
-        console.print(f"[yellow]Warning:[/yellow] {summary.warning}")
+        logger.warning("%s", summary.warning)
 
 
 @vault_app.command("inspect")
@@ -1343,8 +1389,8 @@ def vault_verify(
     console.print(table)
     console.print()
     console.print("[bold green]PASS[/bold green]")
-    console.print(
-        "[yellow]Warning:[/yellow] Successful filesystem verification does "
+    logger.warning(
+        "Successful filesystem verification does "
         "not confirm that a Google Drive client has finished remote "
         "synchronization."
     )
@@ -1434,9 +1480,10 @@ def _run_sync(
     from mindcap.sync.runner import SyncRunner, build_sync_result
 
     artifact_root = (output or default_artifact_root()).resolve()
-    _quiet = quiet and not json_output
+    _quiet = quiet
     reporter = CaptureProgressReporter(
-        console=console,
+        console=Console(stderr=True),
+        summary_console=console,
         verbose=verbose,
         debug=debug,
         quiet=_quiet,
@@ -1497,16 +1544,15 @@ def _run_sync(
             )
             if len(candidates) == 0:
                 if not _quiet:
-                    console.print(
-                        "[yellow]No compatible unfinished run found; "
-                        "starting a new run.[/yellow]"
+                    reporter.warn(
+                        "No compatible unfinished run found; starting a new run."
                     )
             elif len(candidates) == 1:
                 storage = candidates[0]
                 prior_state = storage.load_state()
                 effective_run_id = storage.run_id
                 if not _quiet:
-                    console.print(f"[bold]Resuming run:[/bold] {effective_run_id}")
+                    reporter.phase(f"Resuming run: {effective_run_id}")
             else:
                 ids = ", ".join(s.run_id for s in candidates[:5])
                 _fail(
@@ -1569,8 +1615,8 @@ def _run_sync(
         console.print(str(run_dir))
 
     if state.status == RunStatus.INTERRUPTED:
-        console.print(
-            f"\n[bold yellow]Capture interrupted safely.[/bold yellow]\n"
+        reporter.warn(
+            f"Capture interrupted safely.\n"
             f"\nRun ID:\n  {state.run_id}\n"
             f"\nResume:\n"
             f"  mindcap sync {provider} --resume --run-id {state.run_id}"
