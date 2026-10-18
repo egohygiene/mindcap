@@ -110,6 +110,12 @@ def inspect_suno_archive(bundle_path: Path, console: Console) -> None:
     table.add_row("Capture version", str(manifest.get("capture_version", "?")))
     table.add_row("Captured at", str(manifest.get("captured_at", "?")))
     table.add_row("Clips", str(clip_count))
+    completeness = manifest.get("capture_completeness")
+    if completeness not in ("complete", "partial"):
+        completeness = (
+            "partial" if manifest.get("warnings") else "unknown (legacy archive)"
+        )
+    table.add_row("Capture completeness", completeness)
     table.add_row("Audio", str(audio_count))
     table.add_row("Artwork", str(artwork_count))
     table.add_row("Videos", str(video_count))

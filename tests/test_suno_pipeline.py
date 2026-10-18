@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from typer.testing import CliRunner
 
 from mindcap.core.models import (
@@ -139,6 +140,97 @@ def test_plugins_list_includes_suno() -> None:
     assert result.exit_code == 0
     assert "suno" in result.stdout
     assert "api" in result.stdout
+
+
+def test_partial_media_counts_survive_verified_archive_persistence(
+    tmp_path: Path,
+) -> None:
+    plugin = SunoPlugin()
+    envelope = _make_envelope(tmp_path)
+    envelope.assets = [
+        asset for asset in envelope.assets if asset.asset_type != "audio"
+    ]
+    counts = {
+        "audio_count": 0,
+        "audio_expected_count": 1,
+        "audio_failed_count": 1,
+        "asset_expected_count": 2,
+        "asset_downloaded_count": 1,
+        "asset_failed_count": 1,
+    }
+    envelope.safe_metadata.update({"capture_complete": False, **counts})
+    envelope.warnings.append(
+        "Asset download failed for clip-alpha (audio): "
+        "Failed to download Suno asset (403)."
+    )
+    normalized = plugin.normalize(envelope, WORKSPACE_ID)
+    stored = plugin.storage().persist(
+        _request(tmp_path), envelope, normalized, plugin.render(normalized)
+    )
+
+    # A valid archive of a partial capture passes integrity verification.
+    assert stored.status == "complete"
+    plugin.storage().verify(stored.path)
+    for relative_path in (
+        "workspace/metadata.json",
+        "manifest.json",
+        "reports/capture-report.json",
+    ):
+        artifact = json.loads((stored.path / relative_path).read_text(encoding="utf-8"))
+        assert artifact["capture_complete"] is False
+        assert artifact["capture_completeness"] == "partial"
+        assert {key: artifact[key] for key in counts} == counts
+    report = json.loads(
+        (stored.path / "reports/capture-report.json").read_text(encoding="utf-8")
+    )
+    assert report["status"] == "partial"
+    report_markdown = (stored.path / "reports/capture-report.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Capture completeness: partial" in report_markdown
+    assert "Primary audio archived: 0 / 1 (1 failed)" in report_markdown
+    assert "Advertised assets archived: 1 / 2 (1 failed)" in report_markdown
+
+
+@pytest.mark.parametrize("json_output", [False, True])
+def test_cli_reports_partial_capture_with_valid_archive(
+    tmp_path: Path, json_output: bool
+) -> None:
+    envelope = _make_envelope(tmp_path)
+    envelope.assets = [
+        asset for asset in envelope.assets if asset.asset_type != "audio"
+    ]
+    envelope.safe_metadata.update(
+        {
+            "clip_count": 2,
+            "audio_count": 0,
+            "audio_expected_count": 1,
+            "audio_failed_count": 1,
+            "capture_complete": False,
+        }
+    )
+    envelope.warnings = ["Primary audio download failed (403)."]
+    args = ["capture", "suno", WORKSPACE_ID, "--output", str(tmp_path / "archive")]
+    if json_output:
+        args.append("--json")
+    with patch(
+        "mindcap.plugins.suno.archive.service.SunoWorkspaceCaptureService.capture",
+        return_value=envelope,
+    ):
+        result = CliRunner().invoke(app, args)
+    assert result.exit_code == 0, result.output
+    if json_output:
+        data = json.loads(result.stdout)
+        assert data["status"] == "complete"
+        assert data["capture_complete"] is False
+        assert data["capture_completeness"] == "partial"
+        assert "Authenticating" in result.stderr
+    else:
+        output = " ".join(result.stdout.split())
+        assert "Capture Partial" in output
+        assert "Audio 0 / 1" in output
+        assert "Capture completeness Partial" in output
+        assert "Archive integrity PASS" in output
 
 
 def test_capture_defaults_to_plugin_strategy_for_suno(tmp_path: Path) -> None:

@@ -127,6 +127,20 @@ Capture a workspace archive using a placeholder workspace UUID:
 uv run mindcap capture suno "00000000-0000-0000-0000-000000000000"
 ```
 
+If audio downloads return HTTP 403, see the
+[Suno audio troubleshooting guide](docs/suno-audio.md). Metadata authentication
+and permission to download media are separate checks. The capture summary
+reports downloaded/expected primary audio and marks advertised asset failures
+as partial; archive integrity PASS checks the files that were actually saved.
+
+Inspect an existing capture without contacting Suno or printing its URLs:
+
+```bash
+uv run mindcap inspect suno \
+  ".cache/mindcap/workspaces/suno/suno-00000000-0000-0000-0000-000000000000/v1" \
+  --asset-diagnostics
+```
+
 ## Vault Ingestion and Verification
 
 Mindcap can ingest finalized Suno workspace bundles into an immutable vault made of sealed SQLite catalog generations and ZIP64 pack files. Example:

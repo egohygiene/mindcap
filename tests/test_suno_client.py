@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import base64
 import json
+import shutil
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
 
+from mindcap.core.errors import CaptureFailedError
 from mindcap.plugins.suno.auth import SunoAuthState
 from mindcap.plugins.suno.client import SunoClient
 from mindcap.plugins.suno.errors import SunoApiError
@@ -103,3 +107,170 @@ def test_get_workspace_probes_known_paths_until_one_succeeds() -> None:
         "/api/project/workspace-123/",
     ]
     assert "/api/workspaces/workspace-123/" in attempted_paths
+
+
+def test_media_download_omits_api_credentials_and_cookie_jars() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        forbidden = {
+            "authorization",
+            "cookie",
+            "x-browser-token",
+            "x-device-id",
+            "origin",
+            "referer",
+        }
+        if forbidden & set(request.headers):
+            return httpx.Response(403, content=b"not allowed")
+        return httpx.Response(
+            200, headers={"content-type": "audio/mpeg"}, content=b"audio"
+        )
+
+    client = SunoClient(state=_state(), transport=httpx.MockTransport(handler))
+    client._client.cookies.set("api-cookie", "secret", domain="suno.com")
+    client._media_client.cookies.set("media-cookie", "secret", domain="suno.com")
+    url = "https://cdn.suno.com/audio.mp3?signature=private-signature&expires=100"
+    path, metadata = client.download_to_file(url)
+    try:
+        assert path.read_bytes() == b"audio"
+        assert str(requests[0].url) == url
+        assert metadata["source_url"] == "https://cdn.suno.com/audio.mp3"
+        assert metadata["byte_size"] == 5
+        assert metadata["media_type"] == "audio/mpeg"
+        assert "private-signature" not in str(metadata)
+    finally:
+        shutil.rmtree(path.parent)
+
+
+@pytest.mark.parametrize(
+    "asset_url",
+    [
+        "https://studio-api-prod.suno.com/asset.mp3",
+        "/asset.mp3",
+    ],
+)
+def test_api_origin_asset_keeps_api_authentication(asset_url: str) -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, content=b"audio")
+
+    state = _state()
+    client = SunoClient(state=state, transport=httpx.MockTransport(handler))
+    path, _ = client.download_to_file(asset_url)
+    try:
+        assert requests[0].headers["authorization"] == f"Bearer {state.jwt}"
+        assert requests[0].headers["cookie"] == state.cookie_header
+        assert "x-browser-token" in requests[0].headers
+    finally:
+        shutil.rmtree(path.parent)
+
+
+@pytest.mark.parametrize(
+    "asset_url",
+    [
+        "https://studio-api-prod.suno.com:444/asset.mp3",
+        "http://studio-api-prod.suno.com/asset.mp3",
+        "https://studio-api-prod.suno.com.evil.test/asset.mp3",
+    ],
+)
+def test_similar_asset_origin_never_gets_api_authentication(asset_url: str) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "authorization" not in request.headers
+        assert "cookie" not in request.headers
+        assert "x-browser-token" not in request.headers
+        return httpx.Response(200, content=b"audio")
+
+    client = SunoClient(state=_state(), transport=httpx.MockTransport(handler))
+    path, _ = client.download_to_file(asset_url)
+    shutil.rmtree(path.parent)
+
+
+def test_media_redirect_drops_auth_and_never_restores_it() -> None:
+    requests: list[httpx.Request] = []
+    urls = [
+        "https://studio-api-prod.suno.com/asset.mp3",
+        "https://cdn.suno.com/asset.mp3?signature=secret",
+        "https://studio-api-prod.suno.com/final.mp3",
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if len(requests) < 3:
+            return httpx.Response(
+                302,
+                headers={
+                    "location": urls[len(requests)],
+                    "set-cookie": "redirect-cookie=secret; Domain=.suno.com; Path=/",
+                },
+            )
+        return httpx.Response(200, content=b"audio")
+
+    client = SunoClient(state=_state(), transport=httpx.MockTransport(handler))
+    path, _ = client.download_to_file(urls[0])
+    try:
+        assert [str(request.url) for request in requests] == urls
+        assert "authorization" in requests[0].headers
+        for request in requests[1:]:
+            assert "authorization" not in request.headers
+            assert "cookie" not in request.headers
+            assert "x-browser-token" not in request.headers
+            assert "x-device-id" not in request.headers
+    finally:
+        shutil.rmtree(path.parent)
+
+
+def test_media_403_is_actionable_and_removes_temporary_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    temporary = tmp_path / "download"
+    temporary.mkdir()
+    monkeypatch.setattr(
+        "mindcap.plugins.suno.client.tempfile.mkdtemp", lambda **kwargs: str(temporary)
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, content=b"body containing private-provider-data")
+
+    client = SunoClient(state=_state(), transport=httpx.MockTransport(handler))
+    with pytest.raises(CaptureFailedError) as error:
+        client.download_to_file("https://cdn.suno.com/audio.mp3?signature=private")
+    message = str(error.value)
+    assert "403" in message
+    assert "Download works" in message
+    assert "private" not in message
+    assert "cdn.suno.com" not in message
+    assert not temporary.exists()
+
+
+@pytest.mark.parametrize("failure", ["empty", "stream", "redirect-loop"])
+def test_failed_media_transfer_removes_partial_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    temporary = tmp_path / "download"
+    temporary.mkdir()
+    monkeypatch.setattr(
+        "mindcap.plugins.suno.client.tempfile.mkdtemp", lambda **kwargs: str(temporary)
+    )
+
+    class BrokenStream(httpx.SyncByteStream):
+        def __iter__(self) -> Iterator[bytes]:
+            yield b"partial audio"
+            raise httpx.ReadError("private-provider-data")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if failure == "stream":
+            return httpx.Response(200, stream=BrokenStream())
+        if failure == "redirect-loop":
+            return httpx.Response(302, headers={"location": "/audio.mp3"})
+        return httpx.Response(200, content=b"")
+
+    client = SunoClient(state=_state(), transport=httpx.MockTransport(handler))
+    with pytest.raises(CaptureFailedError) as error:
+        client.download_to_file("https://cdn.suno.com/audio.mp3?signature=secret")
+    assert "private-provider-data" not in str(error.value)
+    assert "signature=secret" not in str(error.value)
+    assert not temporary.exists()

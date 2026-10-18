@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import pytest
 
 from mindcap.config import suno_api_origin
 from mindcap.core.models import CaptureEnvelope, RawResponseUnit
@@ -672,7 +673,10 @@ def test_incomplete_capture_detected_by_service(tmp_path: Path) -> None:
     assert any("Incomplete capture" in w for w in envelope.warnings)
 
 
-def test_complete_capture_has_no_incomplete_warning(tmp_path: Path) -> None:
+@pytest.mark.parametrize("asset_status", [403, 404])
+def test_all_failed_assets_make_capture_partial(
+    tmp_path: Path, asset_status: int
+) -> None:
     from mindcap.core.models import CaptureRequest
     from mindcap.plugins.suno.archive.downloader import SunoAssetDownloader
 
@@ -687,6 +691,8 @@ def test_complete_capture_has_no_incomplete_warning(tmp_path: Path) -> None:
                 headers={"content-type": "application/json"},
                 content=json.dumps(project).encode(),
             )
+        if request.url.host == "cdn.example.test":
+            return httpx.Response(asset_status, request=request, content=b"denied")
         return httpx.Response(404, request=request, content=b"{}")
 
     client = SunoClient(state=_state(), transport=httpx.MockTransport(handler))
@@ -704,8 +710,114 @@ def test_complete_capture_has_no_incomplete_warning(tmp_path: Path) -> None:
     )
     envelope = service.capture(request)
 
-    assert envelope.safe_metadata["capture_complete"] is True
+    assert envelope.safe_metadata["capture_complete"] is False
+    assert envelope.safe_metadata["audio_count"] == 0
+    assert envelope.safe_metadata["audio_expected_count"] == 3
+    assert envelope.safe_metadata["audio_failed_count"] == 3
+    assert envelope.safe_metadata["asset_expected_count"] == 9
+    assert envelope.safe_metadata["asset_downloaded_count"] == 0
+    assert envelope.safe_metadata["asset_failed_count"] == 9
+    assert len(envelope.warnings) == 9
+    # All clip metadata was returned; incompleteness is in the media.
     assert not any("Incomplete capture" in w for w in envelope.warnings)
+
+
+@pytest.mark.parametrize(
+    "failed_asset",
+    [None, "audio.mp3", "cover.jpg", "video.mp4", "variant.m4a"],
+)
+def test_capture_completeness_counts_all_advertised_asset_types(
+    tmp_path: Path, failed_asset: str | None
+) -> None:
+    from mindcap.core.models import CaptureRequest
+
+    project = {
+        "id": PROJECT_ID,
+        "clip_count": 1,
+        "clips": [
+            {
+                "id": "clip-1",
+                "audio_url": "https://cdn.example.test/audio.mp3",
+                "image_url": "https://cdn.example.test/cover.jpg",
+                "video_url": "https://cdn.example.test/video.mp4",
+                "media_urls": [
+                    {
+                        "url": "https://cdn.example.test/variant.m4a",
+                        "encoding": "m4a",
+                        "content_type": "audio/mp4",
+                    }
+                ],
+            }
+        ],
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "cdn.example.test":
+            status = 403 if request.url.path == f"/{failed_asset}" else 200
+            return httpx.Response(status, request=request, content=b"synthetic media")
+        if request.url.path == f"/api/project/{PROJECT_ID}":
+            return httpx.Response(200, request=request, json=project)
+        return httpx.Response(404, request=request, json={})
+
+    client = SunoClient(state=_state(), transport=httpx.MockTransport(handler))
+    service = SunoWorkspaceCaptureService(client=client)
+    envelope = service.capture(
+        CaptureRequest(
+            source_type="suno",
+            source=PROJECT_ID,
+            provider="suno",
+            canonical_identifier=PROJECT_ID,
+            canonical_url=None,
+            strategy="api",
+            artifact_root=tmp_path,
+        )
+    )
+
+    metadata = envelope.safe_metadata
+    assert metadata["capture_complete"] is (failed_asset is None)
+    assert metadata["audio_expected_count"] == 1
+    assert metadata["audio_count"] == (0 if failed_asset == "audio.mp3" else 1)
+    assert metadata["audio_failed_count"] == (1 if failed_asset == "audio.mp3" else 0)
+    assert metadata["asset_expected_count"] == 4
+    assert metadata["asset_downloaded_count"] == (4 if failed_asset is None else 3)
+    assert metadata["asset_failed_count"] == (0 if failed_asset is None else 1)
+    assert len(envelope.warnings) == (0 if failed_asset is None else 1)
+    for asset in envelope.assets:
+        asset.temporary_path.unlink()
+        asset.temporary_path.parent.rmdir()
+
+
+def test_capture_with_no_advertised_assets_is_complete(tmp_path: Path) -> None:
+    from mindcap.core.models import CaptureRequest
+
+    project = {"id": PROJECT_ID, "clip_count": 1, "clips": [{"id": "clip-1"}]}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == f"/api/project/{PROJECT_ID}":
+            return httpx.Response(200, request=request, json=project)
+        return httpx.Response(404, request=request, json={})
+
+    client = SunoClient(state=_state(), transport=httpx.MockTransport(handler))
+    envelope = SunoWorkspaceCaptureService(client=client).capture(
+        CaptureRequest(
+            source_type="suno",
+            source=PROJECT_ID,
+            provider="suno",
+            canonical_identifier=PROJECT_ID,
+            canonical_url=None,
+            strategy="api",
+            artifact_root=tmp_path,
+            options={"include_video": False},
+        )
+    )
+
+    assert envelope.safe_metadata["capture_complete"] is True
+    assert envelope.safe_metadata["audio_expected_count"] == 0
+    assert envelope.safe_metadata["audio_failed_count"] == 0
+    assert envelope.safe_metadata["asset_expected_count"] == 0
+    assert envelope.safe_metadata["asset_downloaded_count"] == 0
+    assert envelope.safe_metadata["asset_failed_count"] == 0
+    assert not envelope.warnings
 
 
 # ---------------------------------------------------------------------------
