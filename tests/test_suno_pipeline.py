@@ -218,7 +218,7 @@ def test_cli_reports_partial_capture_with_valid_archive(
         return_value=envelope,
     ):
         result = CliRunner().invoke(app, args)
-    assert result.exit_code == 0, result.output
+    assert result.exit_code == 2, result.output
     if json_output:
         data = json.loads(result.stdout)
         assert data["status"] == "complete"

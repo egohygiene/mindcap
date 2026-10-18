@@ -26,10 +26,12 @@ from __future__ import annotations
 
 import signal
 import time
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from mindcap.core.diagnostics import redact_text
 from mindcap.core.errors import AuthenticationRequiredError, MindcapError
 from mindcap.core.models import CaptureRequest
 from mindcap.core.progress import CaptureProgressReporter
@@ -142,6 +144,7 @@ class SyncRunner:
         BatchRunState
             Final run state after completion or interruption.
         """
+        self._interrupted = False
         effective_run_id = run_id or generate_run_id(config.provider)
         storage = RunStorage(artifact_root, config.provider, effective_run_id)
         storage.ensure_dir()
@@ -153,13 +156,13 @@ class SyncRunner:
             else:
                 state = create_initial_state(effective_run_id, config, artifact_root)
 
-            self._install_signal_handlers(state, storage)
-            storage.save_state(state)
-            storage.append_run_event(
-                {"event": "run-started", "run_id": effective_run_id}
-            )
+            previous_handlers = self._install_signal_handlers(state, storage)
 
             try:
+                storage.save_state(state)
+                storage.append_run_event(
+                    {"event": "run-started", "run_id": effective_run_id}
+                )
                 state = self._run_body(
                     state=state,
                     config=config,
@@ -171,21 +174,30 @@ class SyncRunner:
             except _InterruptedError:
                 pass  # Handled in signal handler; state already updated.
             except (MindcapError, OSError, Exception) as error:
+                safe_error = redact_text(str(error))
                 state.status = RunStatus.FAILED
-                state.errors.append(str(error))
+                state.completed_at = datetime.now(UTC)
+                state.errors.append(safe_error)
+                self._reporter.warn(f"Sync failed: {safe_error}")
                 storage.save_state(state)
-                storage.append_run_event({"event": "run-failed", "error": str(error)})
+                storage.save_report(state)
+                storage.append_run_event({"event": "run-failed", "error": safe_error})
             finally:
-                if state.status not in {
-                    RunStatus.COMPLETE,
-                    RunStatus.COMPLETE_WITH_FAILURES,
-                    RunStatus.FAILED,
-                }:
-                    if self._interrupted:
-                        state.status = RunStatus.INTERRUPTED
-                    state.completed_at = datetime.now(UTC)
-                    storage.save_state(state)
-                    storage.save_report(state)
+                try:
+                    if state.status not in {
+                        RunStatus.COMPLETE,
+                        RunStatus.COMPLETE_WITH_FAILURES,
+                        RunStatus.FAILED,
+                    }:
+                        if self._interrupted:
+                            state.status = RunStatus.INTERRUPTED
+                        state.completed_at = datetime.now(UTC)
+                        storage.save_state(state)
+                        storage.save_report(state)
+                finally:
+                    for signum, previous_handler in previous_handlers.items():
+                        with suppress(OSError, ValueError):
+                            signal.signal(signum, previous_handler)
 
         return state
 
@@ -209,6 +221,7 @@ class SyncRunner:
             or not state.discovery_result.discovery_complete
         )
         if needs_discovery:
+            self._reporter.phase("Discovering sources...")
             state.status = RunStatus.DISCOVERING
             storage.save_state(state)
             collection_request = CollectionRequest(
@@ -245,6 +258,7 @@ class SyncRunner:
             raise _InterruptedError()
 
         # ---- Planning --------------------------------------------------
+        self._reporter.phase("Planning captures...")
         plugin = build_registry().get(config.provider)
         verify_fn = _make_verify_fn(plugin)
 
@@ -273,9 +287,9 @@ class SyncRunner:
         # ---- Execution -------------------------------------------------
         strategy_name = plugin.default_strategy()
 
-        for item in items:
+        for position, item in enumerate(items, start=1):
             if self._interrupted:
-                item.transition(ItemStatus.INTERRUPTED)
+                # Unstarted items remain planned and can be captured on resume.
                 break
 
             action = item.action
@@ -293,6 +307,10 @@ class SyncRunner:
                 item.transition(ItemStatus.BLOCKED)
                 continue
 
+            self._reporter.phase(
+                f"Capturing source {position} / {len(items)}: "
+                f"{redact_text(item.descriptor.canonical_identifier)}"
+            )
             self._capture_item(
                 item=item,
                 config=config,
@@ -306,7 +324,9 @@ class SyncRunner:
 
         # ---- Finalize --------------------------------------------------
         counts = state.counts()
-        if counts["failed"] > 0:
+        if self._interrupted:
+            state.status = RunStatus.INTERRUPTED
+        elif counts["failed"] > 0:
             state.status = RunStatus.COMPLETE_WITH_FAILURES
         else:
             state.status = RunStatus.COMPLETE
@@ -334,6 +354,7 @@ class SyncRunner:
     ) -> None:
         """Execute one item, retrying on retryable failures."""
         descriptor = item.descriptor
+        safe_identifier = redact_text(descriptor.canonical_identifier)
         action = item.action
 
         next_status = (
@@ -345,6 +366,10 @@ class SyncRunner:
 
         while True:
             attempt_num = item.retry_count + 1
+            self._reporter.detail(
+                f"Source {safe_identifier}: attempt {attempt_num} "
+                f"of {item.max_retries + 1}"
+            )
             started = datetime.now(UTC)
             storage.append_item_event(
                 {
@@ -373,7 +398,9 @@ class SyncRunner:
                     options=config.options,
                 )
                 strategy_obj = plugin.strategy(strategy_name, reporter=self._reporter)
+                self._reporter.begin_capture()
                 envelope = strategy_obj.capture(request)
+                self._reporter.report_warnings(envelope.warnings)
                 normalized = plugin.normalize(envelope, descriptor.canonical_identifier)
                 transcript = plugin.render(normalized)
                 stored = plugin.storage().persist(
@@ -386,14 +413,41 @@ class SyncRunner:
                 item.attempts.append(attempt)
                 item.archive_path = str(stored.path)
                 item.archive_version = stored.version
+                attempt.warnings = [redact_text(w) for w in envelope.warnings]
+                item.warnings.extend(attempt.warnings)
+
+                if envelope.safe_metadata.get("capture_complete") is False:
+                    partial_error = (
+                        "Capture is partial: required assets missing; "
+                        "saved archive retained. Inspect warnings before retrying."
+                    )
+                    attempt.status = ItemStatus.FAILED_TERMINAL
+                    attempt.error = partial_error
+                    item.errors.append(partial_error)
+                    item.transition(ItemStatus.FAILED_TERMINAL)
+                    self._reporter.warn(
+                        f"Source {safe_identifier} failed: {partial_error}"
+                    )
+                    storage.append_item_event(
+                        {
+                            "event": "item-failed",
+                            "id": descriptor.canonical_identifier,
+                            "terminal": True,
+                            "status": item.status.value,
+                            "archive_path": str(stored.path),
+                            "error": partial_error,
+                        }
+                    )
+                    return
 
                 if stored.status == "unchanged":
                     item.transition(ItemStatus.UNCHANGED)
-                elif item.warnings or envelope.warnings:
+                elif item.warnings:
                     item.transition(ItemStatus.COMPLETE_WITH_WARNINGS)
                 else:
                     item.transition(ItemStatus.COMPLETE)
 
+                self._reporter.detail(f"Source {safe_identifier}: {item.status.value}")
                 storage.append_item_event(
                     {
                         "event": "item-complete",
@@ -405,25 +459,32 @@ class SyncRunner:
                 return
 
             except AuthenticationRequiredError as error:
+                safe_error = redact_text(str(error))
                 attempt.finished_at = datetime.now(UTC)
                 attempt.status = ItemStatus.FAILED_TERMINAL
-                attempt.error = str(error)
+                attempt.error = safe_error
                 item.attempts.append(attempt)
-                item.errors.append(f"Authentication expired: {error}")
+                item.errors.append(f"Authentication expired: {safe_error}")
                 item.transition(ItemStatus.FAILED_TERMINAL)
+                self._reporter.warn(
+                    f"Source {safe_identifier} failed: {safe_error}. "
+                    "Authenticate again before retrying this source."
+                )
                 storage.append_item_event(
                     {
                         "event": "item-failed",
                         "id": descriptor.canonical_identifier,
                         "terminal": True,
-                        "error": str(error),
+                        "error": safe_error,
                     }
                 )
                 return
 
             except (MindcapError, OSError, Exception) as error:
+                safe_error = redact_text(str(error))
                 attempt.finished_at = datetime.now(UTC)
-                item.errors.append(str(error))
+                attempt.error = safe_error
+                item.errors.append(safe_error)
 
                 if _is_retryable_error(error) and item.retry_count < item.max_retries:
                     attempt.status = ItemStatus.FAILED_RETRYABLE
@@ -432,27 +493,36 @@ class SyncRunner:
                     item.transition(ItemStatus.FAILED_RETRYABLE)
                     item.transition(ItemStatus.CAPTURING)
                     backoff = min(2**item.retry_count, 30)
-                    if not self._interrupted:
-                        time.sleep(backoff)
+                    self._reporter.warn(
+                        f"Source {safe_identifier}: attempt {attempt_num} failed: "
+                        f"{safe_error}. Retrying in {backoff}s "
+                        f"(retry {item.retry_count} of {item.max_retries})."
+                    )
                     storage.append_item_event(
                         {
                             "event": "item-retry",
                             "id": descriptor.canonical_identifier,
                             "attempt": attempt_num,
-                            "error": str(error),
+                            "error": safe_error,
                         }
                     )
+                    if not self._interrupted:
+                        time.sleep(backoff)
                     continue
 
                 attempt.status = ItemStatus.FAILED_TERMINAL
                 item.attempts.append(attempt)
                 item.transition(ItemStatus.FAILED_TERMINAL)
+                self._reporter.warn(
+                    f"Source {safe_identifier} failed after {attempt_num} "
+                    f"attempt(s): {safe_error}."
+                )
                 storage.append_item_event(
                     {
                         "event": "item-failed",
                         "id": descriptor.canonical_identifier,
                         "terminal": True,
-                        "error": str(error),
+                        "error": safe_error,
                     }
                 )
                 return
@@ -463,8 +533,8 @@ class SyncRunner:
 
     def _install_signal_handlers(
         self, state: BatchRunState, storage: RunStorage
-    ) -> None:
-        """Install SIGINT and SIGTERM handlers for graceful interruption."""
+    ) -> dict[int, Any]:
+        """Install interruption handlers and return the handlers to restore."""
 
         def _handle(signum: int, frame: object) -> None:
             self._interrupted = True
@@ -477,12 +547,16 @@ class SyncRunner:
             except Exception:
                 pass
 
-        try:
-            signal.signal(signal.SIGINT, _handle)
-            signal.signal(signal.SIGTERM, _handle)
-        except (OSError, ValueError):
-            # Signal handling is not available in all environments.
-            pass
+        previous_handlers: dict[int, Any] = {}
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            try:
+                previous_handler = signal.getsignal(signum)
+                signal.signal(signum, _handle)
+                previous_handlers[signum] = previous_handler
+            except (OSError, ValueError):
+                # Signal handling is not available in all environments.
+                pass
+        return previous_handlers
 
 
 # ---------------------------------------------------------------------------

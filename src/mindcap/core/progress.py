@@ -8,10 +8,14 @@ plugins do not need any conditional guards.
 
 from __future__ import annotations
 
+import logging
+import re
 import time
+from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from rich.console import Console
 from rich.progress import (
@@ -25,6 +29,13 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 from rich.table import Table
+from rich.text import Text
+
+from mindcap.core.diagnostics import redact_text
+
+_LOGGER = logging.getLogger("mindcap.progress")
+_LOGGER.addHandler(logging.NullHandler())
+_UUID = re.compile(r"\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b", re.IGNORECASE)
 
 
 @dataclass
@@ -84,7 +95,10 @@ class CaptureProgressReporter:
     debug:
         Emit low-level diagnostic messages (never exposes secrets).
     quiet:
-        Suppress all non-error output, including the final summary.
+        Suppress informational output and the final summary, retaining warnings.
+    summary_console:
+        Optional destination for the final result table.  Diagnostic events
+        always use *console*, allowing a CLI to keep stdout machine-readable.
     """
 
     def __init__(
@@ -94,89 +108,186 @@ class CaptureProgressReporter:
         verbose: bool = False,
         debug: bool = False,
         quiet: bool = False,
+        summary_console: Console | None = None,
     ) -> None:
         self._console = console
+        self._summary_console = summary_console or console
         self.verbose = verbose
         self.debug = debug
         self.quiet = quiet
         self._start: float = time.monotonic()
+        self._warnings: dict[str, int] = {}
+        self._observed_warnings: Counter[str] = Counter()
+        self._reported_groups: dict[str, int] = {}
+        self._warning_count = 0
 
-    # ------------------------------------------------------------------
-    # Phase / label helpers
-    # ------------------------------------------------------------------
+    def _emit(self, message: str, level: int = logging.INFO) -> None:
+        """Write a literal message once, with a matching event for file logging."""
+        if self._console is None:
+            return
+        safe = redact_text(message)
+        _LOGGER.log(level, "%s", safe, extra={"progress_event": True})
+        if self.quiet and level < logging.WARNING:
+            return
+        style = {
+            logging.DEBUG: "dim",
+            logging.INFO: "bright_cyan",
+            logging.WARNING: "bright_yellow",
+            logging.ERROR: "bold bright_red",
+        }.get(level, "bright_cyan")
+        label = logging.getLevelName(level)
+        line = Text()
+        line.append(datetime.now().strftime("%H:%M:%S"), style="dim")
+        line.append(f"  {label:<7} ", style=style)
+        line.append(safe)
+        self._console.print(line, highlight=False)
 
     def phase(self, message: str) -> None:
         """Emit a top-level phase label."""
-        if self._console and not self.quiet:
-            self._console.print(message)
+        self._emit(message)
 
     def detail(self, message: str) -> None:
         """Emit a verbose-only detail line."""
-        if self._console and self.verbose and not self.quiet:
-            self._console.print(f"  [dim]{message}[/dim]")
+        if self.verbose:
+            self._emit(message)
 
     def debug_line(self, message: str) -> None:
-        """Emit a debug-only line (must never contain secrets)."""
-        if self._console and self.debug and not self.quiet:
-            self._console.print(f"  [dim yellow]{message}[/dim yellow]")
+        """Emit a debug-only line with credential redaction."""
+        if self.debug:
+            self._emit(message, logging.DEBUG)
 
     def warn(self, message: str) -> None:
-        """Always emit a warning, even in quiet mode."""
-        if self._console:
-            self._console.print(f"[bold yellow]Warning:[/bold yellow] {message}")
+        """Emit warnings, collapsing repeated asset failures in normal output.
 
-    # ------------------------------------------------------------------
-    # Spinner context manager
-    # ------------------------------------------------------------------
+        Every occurrence remains available to an attached file logger.  The
+        summary reports grouped counts, while verbose output shows each item.
+        Identifiers are normalized generically, without provider assumptions.
+        """
+        if self._console is None:
+            return
+        safe = redact_text(message)
+        key = _UUID.sub("<item>", safe)
+        self._warnings[key] = self._warnings.get(key, 0) + 1
+        self._observed_warnings[safe] += 1
+        self._warning_count += 1
+        if self.verbose or self._warnings[key] == 1:
+            self._emit(safe, logging.WARNING)
+        else:
+            _LOGGER.warning("%s", safe, extra={"progress_event": True})
+
+    def begin_capture(self) -> None:
+        """Start warning reconciliation for another capture on this reporter.
+
+        Live warnings and returned envelope warnings deduplicate within one
+        capture. Aggregate groups and occurrence counts span the whole run.
+        """
+        self._observed_warnings.clear()
+
+    def report_warnings(self, messages: list[str]) -> None:
+        """Report an envelope's warnings without repeating provider events.
+
+        Providers may emit warnings as they occur or only return them at the
+        end.  Reconciliation preserves occurrences and makes both paths behave
+        identically, including quiet and structured-output CLI invocations.
+        """
+        expected = Counter(redact_text(message) for message in messages)
+        for message, count in expected.items():
+            missing = count - self._observed_warnings[message]
+            for _ in range(max(0, missing)):
+                self.warn(message)
+        if not self.verbose:
+            for warning, count in self._warnings.items():
+                if count > 1 and self._reported_groups.get(warning) != count:
+                    self._emit(f"{count}x {warning}", logging.WARNING)
+                    self._reported_groups[warning] = count
+
+    def _phase_finish(
+        self,
+        label: str,
+        started: float,
+        *,
+        interrupted: bool,
+        attempted: int | None = None,
+        total: int | None = None,
+    ) -> None:
+        elapsed = time.monotonic() - started
+        state = "interrupted" if interrupted else "finished"
+        count = ""
+        if attempted is not None:
+            count = f"; attempted {attempted} / {total}"
+        self._emit(
+            f"{label}: {state}{count}; elapsed {elapsed:.1f}s",
+            logging.ERROR if interrupted else logging.INFO,
+        )
 
     @contextmanager
     def spinner(self, label: str) -> Iterator[None]:
-        """Display a spinner while the block executes.
-
-        Falls back to a plain phase line when the console is not available or
-        is not a TTY (e.g., captured test output).
-        """
-        if self._console and not self.quiet and self._console.is_terminal:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=self._console,
-                transient=True,
-            ) as prog:
-                prog.add_task(label)
+        """Show transient TTY activity and bounded start/end diagnostic events."""
+        started = time.monotonic()
+        self.phase(label)
+        try:
+            if self._console and not self.quiet and self._console.is_terminal:
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("{task.description}", markup=False),
+                    console=self._console,
+                    transient=True,
+                ) as prog:
+                    prog.add_task(redact_text(label))
+                    yield
+            else:
                 yield
+        except BaseException:
+            self._phase_finish(label, started, interrupted=True)
+            raise
         else:
-            self.phase(label)
-            yield
-
-    # ------------------------------------------------------------------
-    # Progress-bar context manager
-    # ------------------------------------------------------------------
+            self._phase_finish(label, started, interrupted=False)
 
     @contextmanager
     def progress_bar(self, label: str, total: int) -> Iterator[_ProgressHandle]:
-        """Display a Rich progress bar for *total* items.
+        """Show attempts, including a bounded completion event outside a TTY.
 
-        Yields a :class:`_ProgressHandle` with an ``advance()`` method.
+        An advance records an attempted item; asset download success is tracked
+        by capture statistics.  Leaving this context never implies all assets
+        succeeded, and exceptions always produce an interrupted event.
         """
-        if self._console and not self.quiet and self._console.is_terminal:
-            with Progress(
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                MofNCompleteColumn(),
-                TaskProgressColumn(),
-                TimeRemainingColumn(),
-                TimeElapsedColumn(),
-                console=self._console,
-                transient=False,
-            ) as prog:
-                task_id = prog.add_task(label, total=total)
-                handle = _ProgressHandle(prog, task_id)
+        started = time.monotonic()
+        self.phase(f"{label} (0 / {total})")
+        handle = _ProgressHandle(None, None)
+        try:
+            if self._console and not self.quiet and self._console.is_terminal:
+                with Progress(
+                    TextColumn("{task.description}", markup=False),
+                    BarColumn(),
+                    MofNCompleteColumn(),
+                    TaskProgressColumn(),
+                    TimeRemainingColumn(),
+                    TimeElapsedColumn(),
+                    console=self._console,
+                    transient=True,
+                ) as prog:
+                    task_id = prog.add_task(redact_text(label), total=total)
+                    handle = _ProgressHandle(prog, task_id)
+                    yield handle
+            else:
                 yield handle
+        except BaseException:
+            self._phase_finish(
+                label,
+                started,
+                interrupted=True,
+                attempted=handle.attempted,
+                total=total,
+            )
+            raise
         else:
-            self.phase(f"{label} (0 / {total})")
-            handle = _ProgressHandle(None, None)
-            yield handle
+            self._phase_finish(
+                label,
+                started,
+                interrupted=False,
+                attempted=handle.attempted,
+                total=total,
+            )
 
     # ------------------------------------------------------------------
     # Summary
@@ -190,14 +301,15 @@ class CaptureProgressReporter:
         archive_path: str | None = None,
     ) -> None:
         """Render the final capture summary table."""
+        self.report_warnings(stats.warnings)
         if self.quiet or not self._console:
             return
         stats.elapsed_seconds = time.monotonic() - self._start
         table = Table(show_header=False, box=None, padding=(0, 2))
         table.add_column(style="bold")
-        table.add_column()
+        table.add_column(overflow="fold")
         if project_name:
-            table.add_row("Project", project_name)
+            table.add_row("Project", Text(redact_text(project_name)))
         table.add_row("Clips", str(stats.clips_archived))
         audio_label = str(stats.audio_downloaded)
         if stats.audio_expected is not None:
@@ -210,26 +322,43 @@ class CaptureProgressReporter:
             table.add_row("Downloaded", CaptureStats._fmt_bytes(stats.bytes_downloaded))
         if stats.throughput_mbps > 0:
             table.add_row("Throughput", f"{stats.throughput_mbps:.1f} MB/s")
-        verification_label = (
-            "[green]PASS[/green]" if stats.verification_passed else "[red]FAIL[/red]"
+        verification_label = Text(
+            "PASS" if stats.verification_passed else "FAIL",
+            style="bright_green" if stats.verification_passed else "bright_red",
         )
         table.add_row(
             "Capture completeness",
-            "Complete" if stats.capture_complete else "[yellow]Partial[/yellow]",
+            Text(
+                "Complete" if stats.capture_complete else "Partial",
+                style="bright_green" if stats.capture_complete else "bright_yellow",
+            ),
         )
         table.add_row("Archive integrity", verification_label)
         if archive_path:
-            table.add_row("Archive", archive_path)
-        self._console.print()
+            table.add_row("Archive", Text(redact_text(archive_path), overflow="fold"))
+        summary_console = self._summary_console
+        assert summary_console is not None
+        summary_console.print()
         capture_label = (
             "Capture Complete" if stats.capture_complete else "Capture Partial"
         )
-        self._console.rule(f"[bold]{capture_label}[/bold]")
-        self._console.print(table)
-        if stats.warnings:
-            self._console.print(
-                f"[yellow]{len(stats.warnings)} warning(s) recorded.[/yellow]"
-            )
+        summary_console.rule(
+            Text(capture_label, style="bold"),
+            style="bright_green" if stats.capture_complete else "bright_yellow",
+        )
+        _LOGGER.info(
+            "%s; clips=%s; audio=%s; archive_integrity=%s; archive=%s",
+            capture_label,
+            stats.clips_archived,
+            audio_label,
+            "PASS" if stats.verification_passed else "FAIL",
+            redact_text(archive_path or "not recorded"),
+            extra={"progress_event": True},
+        )
+        summary_console.print(table)
+        warning_count = max(self._warning_count, len(stats.warnings))
+        if warning_count:
+            self._emit(f"{warning_count} warning(s) recorded.", logging.WARNING)
 
 
 class _ProgressHandle:
@@ -238,7 +367,9 @@ class _ProgressHandle:
     def __init__(self, prog: Progress | None, task_id: object) -> None:
         self._prog = prog
         self._task_id = task_id
+        self.attempted = 0
 
     def advance(self, n: int = 1) -> None:
+        self.attempted += n
         if self._prog is not None and self._task_id is not None:
             self._prog.advance(self._task_id, n)  # type: ignore[arg-type]

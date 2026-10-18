@@ -70,19 +70,24 @@ envelope = strategy.capture(request)
 
 ```
 mindcap_cli/
-└── app.py          Typer application and all command registrations
+├── app.py          Typer application and command registrations
+├── runtime.py      Invocation boundaries and diagnostic option resolution
+├── logging.py      Safe terminal errors and optional JSONL diagnostics
+└── _compat.py      Installed Typer command-engine compatibility
 ```
 
-The current phase places all command implementations in `app.py`.  A future
-phase may split them into `commands/` submodules.
+`DiagnosticTyper` assigns the same invocation boundary to every registered
+command. Command implementations remain in `app.py`.
 
 ---
 
 ## Progress rendering
 
 The CLI constructs a `CaptureProgressReporter` backed by a Rich `Console`.
-Provider strategies accept a reporter so they can emit phase labels and
-progress bars during capture.
+Provider strategies accept a reporter so they can emit timestamped phase
+labels, progress bars, warning groups, and attempt counts during capture.
+Diagnostic output goes to stderr; the final summary has a separate stdout
+console. Redirected output uses bounded plain start/end events.
 
 Progress rendering is a CLI concern.  The library emits structured
 `MindcapEvent` objects through the `EventSink` protocol instead.
@@ -95,14 +100,14 @@ Progress rendering is a CLI concern.  The library emits structured
 |------------------------------|-----------|
 | Success                      | 0         |
 | `MindcapError`, `OSError`    | 1         |
-| Partial batch failure        | 2         |
+| Partial capture/batch or usage error | 2   |
 | Interrupted (SIGINT)         | 130       |
 
 ---
 
 ## JSON output
 
-Pass `--json` to any command to receive machine-readable output on stdout:
+Commands with `--json` support emit machine-readable output on stdout:
 
 ```bash
 mindcap capture chatgpt "..." --json
@@ -116,7 +121,9 @@ result = application.capture(...)
 console.print_json(data={"status": result.status, ...})
 ```
 
-Progress is suppressed or redirected to stderr when `--json` is active.
+Progress stays on stderr, including export imports, interrupted sync runs, and
+their resume instructions. Operational failures emit a sanitized error envelope
+on stderr when the command's JSON option is active.
 
 ---
 
@@ -124,7 +131,15 @@ Progress is suppressed or redirected to stderr when `--json` is active.
 
 - **stdout**: final result (path, JSON, or human-readable summary)
 - **stderr**: progress, warnings, errors (via Rich `Console`)
-- When `--quiet` is active, only the final path or JSON is printed
+- When `--quiet` is active on capture/sync, stdout is the final path or JSON;
+  warnings and errors remain visible on stderr
+
+Global `--verbose`, `--debug`, `--quiet`, and `--log-file` options apply before
+the command name. Capture/sync retain their existing local verbosity options.
+Handlers configure only the `mindcap` namespace, restore its previous state
+after invocation, and never enable HTTP request logging. Debug errors include
+sanitized frame locations without source lines or locals. See
+[diagnostics](diagnostics.md) for the log format and redaction limits.
 
 ---
 
