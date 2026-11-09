@@ -1,0 +1,269 @@
+{
+  "$defs": {
+    "Artifact": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "raw",
+            "normalized"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "maximum": 104857600,
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "size_bytes",
+        "role"
+      ],
+      "title": "Artifact",
+      "type": "object"
+    },
+    "Capabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "delta": {
+          "const": false,
+          "default": false,
+          "title": "Delta",
+          "type": "boolean"
+        },
+        "knowledge_review": {
+          "const": false,
+          "default": false,
+          "title": "Knowledge Review",
+          "type": "boolean"
+        },
+        "normalized_units": {
+          "const": true,
+          "default": true,
+          "title": "Normalized Units",
+          "type": "boolean"
+        },
+        "raw_artifacts": {
+          "const": true,
+          "default": true,
+          "title": "Raw Artifacts",
+          "type": "boolean"
+        },
+        "remote_fetch": {
+          "const": false,
+          "default": false,
+          "title": "Remote Fetch",
+          "type": "boolean"
+        }
+      },
+      "title": "Capabilities",
+      "type": "object"
+    },
+    "HandoffUnit": {
+      "additionalProperties": false,
+      "properties": {
+        "identity": {
+          "maxLength": 512,
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9:._-]+$",
+          "title": "Identity",
+          "type": "string"
+        },
+        "identity_basis": {
+          "enum": [
+            "observed",
+            "snapshot-local"
+          ],
+          "title": "Identity Basis",
+          "type": "string"
+        },
+        "locators": {
+          "items": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Locators",
+          "type": "array"
+        },
+        "media_type": {
+          "pattern": "^[\\w.+-]+/[\\w.+-]+$",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "member": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Member",
+          "type": "string"
+        },
+        "original_members": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Original Members",
+          "type": "array"
+        }
+      },
+      "required": [
+        "identity",
+        "member",
+        "media_type",
+        "locators",
+        "identity_basis",
+        "original_members"
+      ],
+      "title": "HandoffUnit",
+      "type": "object"
+    },
+    "Producer": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "const": "mindcap",
+          "default": "mindcap",
+          "title": "Name",
+          "type": "string"
+        },
+        "revision": {
+          "pattern": "^[0-9a-f]{40}$",
+          "title": "Revision",
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "revision"
+      ],
+      "title": "Producer",
+      "type": "object"
+    }
+  },
+  "$id": "urn:mindcap:captured-source-bundle:v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "artifacts": {
+      "items": {
+        "$ref": "#/$defs/Artifact"
+      },
+      "maxItems": 4095,
+      "minItems": 1,
+      "title": "Artifacts",
+      "type": "array"
+    },
+    "capabilities": {
+      "$ref": "#/$defs/Capabilities"
+    },
+    "captured_at": {
+      "format": "date-time",
+      "title": "Captured At",
+      "type": "string"
+    },
+    "previous_bundle_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Previous Bundle Sha256"
+    },
+    "producer": {
+      "$ref": "#/$defs/Producer"
+    },
+    "schema": {
+      "const": "mindcap.captured-source-bundle/v1",
+      "title": "Schema",
+      "type": "string"
+    },
+    "sensitivity": {
+      "const": "private",
+      "default": "private",
+      "title": "Sensitivity",
+      "type": "string"
+    },
+    "source_id": {
+      "maxLength": 512,
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9:._-]+$",
+      "title": "Source Id",
+      "type": "string"
+    },
+    "source_type": {
+      "maxLength": 512,
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9:._-]+$",
+      "title": "Source Type",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "complete",
+        "partial"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "units": {
+      "items": {
+        "$ref": "#/$defs/HandoffUnit"
+      },
+      "maxItems": 20000,
+      "title": "Units",
+      "type": "array"
+    },
+    "warnings": {
+      "default": [],
+      "items": {
+        "pattern": "^[A-Z][A-Z0-9_]{0,63}$",
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "source_id",
+    "source_type",
+    "producer",
+    "captured_at",
+    "status",
+    "capabilities",
+    "artifacts",
+    "units"
+  ],
+  "title": "CapturedSourceBundle",
+  "type": "object"
+}
