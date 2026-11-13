@@ -1,0 +1,13 @@
+{
+  "format": "trial-script-archive/v1",
+  "archived_on": "2026-11-13",
+  "purpose": "Original user-supplied trial scripts, preserved byte-for-byte for issue intake; not installed or integrated product code.",
+  "files": [
+    {
+      "name": "bookmarks.py",
+      "size_bytes": 1953,
+      "sha256": "cda4a331835eb1adab6e004d26558b9ab0ec7802ab32bcdb11bb912a23de668f",
+      "git_blob_sha": "6d49f01feebac7b7c1d74c32dde8ce502bad87e0"
+    }
+  ]
+}
